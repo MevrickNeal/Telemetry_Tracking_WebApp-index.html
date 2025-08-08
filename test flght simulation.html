@@ -200,6 +200,16 @@
             width: 90%;
             height: 90%;
             position: relative;
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+        }
+
+        .fullscreen-view {
+            background: var(--card-dark);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
         }
 
         .close-fullscreen {
@@ -355,11 +365,11 @@
                 <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                     <div style="flex: 1;">
                         <p style="margin: 0; font-size: 0.9rem; opacity: 0.8;">LATITUDE</p>
-                        <p id="latitude" style="margin: 0; font-size: 1.2rem; font-weight: 600;">0° N</p>
+                        <p id="latitude" style="margin: 0; font-size: 1.2rem; font-weight: 600;">24.7466° N</p>
                     </div>
                     <div style="flex: 1;">
                         <p style="margin: 0; font-size: 0.9rem; opacity: 0.8;">LONGITUDE</p>
-                        <p id="longitude" style="margin: 0; font-size: 1.2rem; font-weight: 600;">0° E</p>
+                        <p id="longitude" style="margin: 0; font-size: 1.2rem; font-weight: 600;">90.4040° E</p>
                     </div>
                 </div>
                 <div style="flex: 1;">
@@ -382,7 +392,7 @@
             <div class="card">
                 <div class="card-header">
                     <h2>3D VISUALIZATION</h2>
-                    <button class="maximize-btn" onclick="toggleFullscreen('rocket-3d')">
+                    <button class="maximize-btn" onclick="toggleFullscreen()">
                         <i class="fas fa-expand"></i>
                     </button>
                 </div>
@@ -463,7 +473,16 @@
         <button class="close-fullscreen" onclick="closeFullscreen()">
             <i class="fas fa-times"></i>
         </button>
-        <div class="fullscreen-content" id="fullscreen-content"></div>
+        <div class="fullscreen-content" id="fullscreen-content">
+            <div class="fullscreen-view" id="fs-orientation">
+                <h3 style="position: absolute; top: 10px; left: 10px; margin: 0; color: white;">ORIENTATION</h3>
+                <canvas id="fs-orientation-canvas"></canvas>
+            </div>
+            <div class="fullscreen-view" id="fs-trajectory">
+                <h3 style="position: absolute; top: 10px; left: 10px; margin: 0; color: white;">TRAJECTORY</h3>
+                <canvas id="fs-trajectory-canvas"></canvas>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -483,7 +502,10 @@
             maxAcceleration: 35.4, // m/s²
             burnoutTime: 1.8, // seconds
             coastTime: 3.5, // seconds
-            totalFlightTime: 8.0 // seconds
+            totalFlightTime: 8.0, // seconds
+            gravity: 9.81, // m/s²
+            dragCoefficient: 0.2,
+            rocketMass: 1.5 // kg
         };
 
         // ======================
@@ -539,9 +561,12 @@
         // Position trajectory camera
         trajectoryCamera.position.set(5, 10, 5);
         trajectoryCamera.lookAt(0, 0, 0);
-        
+
+        // Fullscreen renderers
+        let fsOrientationRenderer, fsTrajectoryRenderer;
+
         // ======================
-        // Flight Simulation
+        // Physics Simulation
         // ======================
         function calculateFlightParameters(t) {
             let altitude = 0;
@@ -550,27 +575,46 @@
             let thrust = 0;
             
             if (t < flightParams.burnoutTime) {
-                // Boost phase
+                // Boost phase (powered ascent)
                 const tNorm = t / flightParams.burnoutTime;
                 thrust = 1000 * (1 - tNorm);
                 acceleration = flightParams.maxAcceleration * (1 - tNorm * 0.5);
                 velocity = flightParams.maxVelocity * tNorm;
                 altitude = 0.5 * acceleration * t * t;
             } else if (t < flightParams.coastTime) {
-                // Coast phase
+                // Coast phase (ballistic ascent)
                 const coastT = t - flightParams.burnoutTime;
                 thrust = 0;
-                acceleration = -9.8; // Gravity
+                
+                // Calculate drag force (Fd = 0.5 * ρ * v² * Cd * A)
+                const airDensity = 1.225; // kg/m³ at sea level
+                const crossArea = 0.01; // m²
+                const dragForce = 0.5 * airDensity * Math.pow(flightParams.maxVelocity, 2) * 
+                                 flightParams.dragCoefficient * crossArea;
+                
+                acceleration = -flightParams.gravity - (dragForce / flightParams.rocketMass);
                 velocity = flightParams.maxVelocity + acceleration * coastT;
-                altitude = flightParams.maxAltitude * 0.7 + 
-                          flightParams.maxVelocity * coastT + 
-                          0.5 * acceleration * coastT * coastT;
+                altitude = (0.5 * flightParams.maxAcceleration * Math.pow(flightParams.burnoutTime, 2)) + 
+                          (flightParams.maxVelocity * coastT) + 
+                          (0.5 * acceleration * Math.pow(coastT, 2));
             } else {
-                // Descent phase
+                // Descent phase (free fall with drag)
                 const descentT = t - flightParams.coastTime;
                 thrust = 0;
-                acceleration = -9.8 + (Math.random() * 2 - 1); // Gravity with some turbulence
-                velocity = -flightParams.maxVelocity * 0.3 * (1 - Math.exp(-descentT));
+                
+                // Terminal velocity calculation
+                const airDensity = 1.225; // kg/m³
+                const crossArea = 0.01; // m²
+                const terminalVelocity = Math.sqrt((2 * flightParams.rocketMass * flightParams.gravity) / 
+                                        (airDensity * flightParams.dragCoefficient * crossArea));
+                
+                // Velocity approaches terminal velocity
+                velocity = -terminalVelocity * (1 - Math.exp(-descentT * 0.5));
+                
+                // Acceleration approaches zero as terminal velocity is reached
+                acceleration = -flightParams.gravity * Math.exp(-descentT * 0.3);
+                
+                // Altitude decreases
                 altitude = flightParams.maxAltitude * Math.exp(-descentT * 0.5);
             }
             
@@ -592,14 +636,20 @@
                 // Small vibrations during launch
                 rocket.rotation.x = Math.sin(t * 20) * 0.05;
                 rocket.rotation.y = Math.cos(t * 18) * 0.05;
+                rocket.rotation.z = Math.sin(t * 15) * 0.03;
             } else if (t < flightParams.coastTime) {
                 // Stabilize during coast
                 rocket.rotation.x = 0;
                 rocket.rotation.y = 0;
+                rocket.rotation.z = 0;
             } else {
-                // Tumble during descent
-                rocket.rotation.x = t * 0.5;
-                rocket.rotation.y = t * 0.3;
+                // Tumble during descent with realistic physics
+                const descentT = t - flightParams.coastTime;
+                const tumbleRate = 0.5 * (1 - Math.exp(-descentT * 0.5));
+                
+                rocket.rotation.x = tumbleRate * Math.sin(descentT * 2);
+                rocket.rotation.y = tumbleRate * Math.cos(descentT * 2.3);
+                rocket.rotation.z = tumbleRate * Math.sin(descentT * 1.7);
             }
         }
 
@@ -644,10 +694,10 @@
             document.getElementById('thrust-value').innerHTML = `${params.thrust.toFixed(0)} <span>N</span>`;
             
             // Update GPS coordinates slightly during flight
-            const lat = 28.5 + params.altitude / 10000;
-            const lng = -80.5 + params.altitude / 10000;
+            const lat = 24.7466 + (params.altitude / 100000);
+            const lng = 90.4040 + (params.altitude / 100000);
             document.getElementById('latitude').textContent = `${lat.toFixed(4)}° N`;
-            document.getElementById('longitude').textContent = `${lng.toFixed(4)}° W`;
+            document.getElementById('longitude').textContent = `${lng.toFixed(4)}° E`;
             rocketMarker.setLatLng([lat, lng]);
             
             // Update temperature (simulate heating during flight)
@@ -740,9 +790,9 @@
             document.getElementById('battery-value').innerHTML = `12.6 <span>V</span>`;
             
             // Reset GPS
-            document.getElementById('latitude').textContent = `28.5000° N`;
-            document.getElementById('longitude').textContent = `-80.5000° W`;
-            rocketMarker.setLatLng([28.5, -80.5]);
+            document.getElementById('latitude').textContent = `24.7466° N`;
+            document.getElementById('longitude').textContent = `90.4040° E`;
+            rocketMarker.setLatLng([24.7466, 90.4040]);
             
             // Reset countdown
             document.getElementById('countdown').textContent = "T-00:05:00";
@@ -752,41 +802,41 @@
         // ======================
         // Fullscreen Functionality
         // ======================
-        function toggleFullscreen(viewId) {
+        function toggleFullscreen() {
             const overlay = document.getElementById('fullscreen-overlay');
-            const content = document.getElementById('fullscreen-content');
+            overlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
             
-            // Create a new canvas for fullscreen
-            content.innerHTML = `
-                <div style="width:100%;height:100%;position:relative;">
-                    <canvas id="fullscreen-canvas" style="width:100%;height:100%;"></canvas>
-                    <h2 style="position:absolute;top:10px;left:10px;margin:0;color:white;">
-                        ${viewId === 'rocket-3d' ? '3D ORIENTATION' : '3D TRAJECTORY'}
-                    </h2>
-                </div>
-            `;
+            // Initialize fullscreen renderers
+            const fsOrientationCanvas = document.getElementById('fs-orientation-canvas');
+            const fsTrajectoryCanvas = document.getElementById('fs-trajectory-canvas');
             
-            const canvas = document.getElementById('fullscreen-canvas');
-            const fullscreenRenderer = new THREE.WebGLRenderer({ 
-                antialias: true, 
-                canvas: canvas 
+            fsOrientationRenderer = new THREE.WebGLRenderer({
+                antialias: true,
+                canvas: fsOrientationCanvas
             });
-            fullscreenRenderer.setSize(content.clientWidth, content.clientHeight);
+            fsOrientationRenderer.setSize(
+                document.getElementById('fs-orientation').clientWidth,
+                document.getElementById('fs-orientation').clientHeight
+            );
             
-            // Animation loop for fullscreen
+            fsTrajectoryRenderer = new THREE.WebGLRenderer({
+                antialias: true,
+                canvas: fsTrajectoryCanvas
+            });
+            fsTrajectoryRenderer.setSize(
+                document.getElementById('fs-trajectory').clientWidth,
+                document.getElementById('fs-trajectory').clientHeight
+            );
+            
+            // Start fullscreen animation
             function animateFullscreen() {
                 requestAnimationFrame(animateFullscreen);
-                
-                if (viewId === 'rocket-3d') {
-                    fullscreenRenderer.render(rocketScene, rocketCamera);
-                } else {
-                    fullscreenRenderer.render(trajectoryScene, trajectoryCamera);
-                }
+                fsOrientationRenderer.render(rocketScene, rocketCamera);
+                fsTrajectoryRenderer.render(trajectoryScene, trajectoryCamera);
             }
             
             animateFullscreen();
-            overlay.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
         }
 
         function closeFullscreen() {
@@ -797,14 +847,19 @@
         // ======================
         // GPS Map (Leaflet)
         // ======================
-        const map = L.map('gps-map').setView([28.5, -80.5], 12);
+        const map = L.map('gps-map').setView([24.7466, 90.4040], 17);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
         }).addTo(map);
         
-        const rocketMarker = L.marker([28.5, -80.5]).addTo(map)
-            .bindPopup("Launch Site")
+        const rocketMarker = L.marker([24.7466, 90.4040]).addTo(map)
+            .bindPopup("Mymensingh Engineering College")
             .openPopup();
+
+        // Add satellite imagery layer
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        }).addTo(map);
 
         // ======================
         // Charts
@@ -849,7 +904,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true } }
+                scales: { y: { beginAtZero: false } }
             }
         });
 
