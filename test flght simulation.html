@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Telemetry | Rocket Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Console&family=Source+Code+Pro:wght@400;700&family=SF+Pro+Display:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <style>
+        :root {
+            /* Light Mode */
+            --bg-light: #f5f5f7;
+            --text-light: #1d1d1f;
+            --card-light: rgba(255, 255, 255, 0.85);
+            --border-light: rgba(0, 0, 0, 0.1);
+            
+            /* Dark Mode */
+            --bg-dark: #1e1e1e;
+            --text-dark: #f5f5f7;
+            --card-dark: rgba(30, 30, 30, 0.75);
+            --border-dark: rgba(255, 255, 255, 0.1);
+            
+            /* Accents */
+            --blue: #0a84ff;
+            --green: #30d158;
+            --orange: #ff9f0a;
+            --red: #ff453a;
+        }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 20px 40px;
+            min-height: 100vh;
+            box-sizing: border-box;
+            transition: background 0.5s ease, color 0.5s ease;
+        }
+
+        body[data-theme="light"] {
+            background: var(--bg-light);
+            color: var(--text-light);
+        }
+
+        /* Title Bar */
+        .title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-dark);
+            margin-bottom: 20px;
+        }
+
+        .title-bar h1 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.5rem;
+        }
+
+        .title-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-dark);
+            border: 1px solid var(--border-dark);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-family: 'SF Pro Display', sans-serif;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .control-btn.red {
+            background: var(--red);
+            color: white;
+        }
+
+        .control-btn.red:hover {
+            background: #ff5a45;
+        }
+
+        /* Desktop Environment Layout */
+        .dashboard {
+            display: grid;
+            grid-template-rows: auto auto;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            height: calc(100vh - 160px);
+        }
+
+        .top-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            height: 40%;
+        }
+
+        .bottom-row {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr 1fr;
+            gap: 20px;
+            height: 60%;
+        }
+
+        /* Card Styles */
+        .card {
+            background: var(--card-dark);
+            border: 1px solid var(--border-dark);
+            border-radius: 16px;
+            padding: 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        body[data-theme="light"] .card {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .card h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .maximize-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dark);
+            opacity: 0.7;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: opacity 0.2s;
+        }
+
+        .maximize-btn:hover {
+            opacity: 1;
+        }
+
+        /* 3D Views Container */
+        .orientation-container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 15px;
+            height: 100%;
+        }
+
+        /* 3D Views */
+        .threeD-container {
+            width: 100%;
+            height: 100%;
+            min-height: 200px;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Fullscreen Overlay */
+        .fullscreen-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .fullscreen-content {
+            width: 90%;
+            height: 90%;
+            position: relative;
+        }
+
+        .close-fullscreen {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: var(--red);
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 101;
+        }
+
+        /* Countdown Section */
+        .countdown-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        #countdown {
+            font-family: 'Console', monospace;
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin: 0;
+            text-align: center;
+            letter-spacing: -2px;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .launch-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: auto;
+            padding-top: 20px;
+        }
+
+        .status-indicators {
+            display: flex;
+            gap: 15px;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.7rem;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-bottom: 4px;
+        }
+
+        .dot-green { background: var(--green); }
+        .dot-red { background: var(--red); }
+
+        #launch-btn {
+            background: var(--red);
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 50px;
+            font-family: 'Source Code Pro', monospace;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #launch-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px var(--red);
+        }
+
+        /* GPS Map */
+        #gps-map {
+            width: 100%;
+            height: 100%;
+            min-height: 150px;
+            border-radius: 12px;
+        }
+
+        /* Parameters Grid */
+        .param-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .param-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            border-radius: 12px;
+        }
+
+        .param-card h3 {
+            margin: 0 0 4px 0;
+            font-size: 0.9rem;
+            opacity: 0.8;
+            font-weight: 500;
+        }
+
+        .param-card p {
+            margin: 0;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .param-card span {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <!-- Title Bar -->
+    <div class="title-bar">
+        <h1>SYSTEM TELEMETRY</h1>
+        <div class="title-controls">
+            <button id="connect-btn" class="control-btn">CONNECT</button>
+            <button id="pause-btn" class="control-btn red">PAUSE</button>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <!-- Top Row -->
+        <div class="top-row">
+            <!-- Altitude -->
+            <div class="card">
+                <h2>ALTITUDE</h2>
+                <div style="flex: 1;">
+                    <canvas id="altitude-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- GPS Coordinates -->
+            <div class="card">
+                <h2>GPS COORDINATES</h2>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <div style="flex: 1;">
+                        <p style="margin: 0; font-size: 0.9rem; opacity: 0.8;">LATITUDE</p>
+                        <p id="latitude" style="margin: 0; font-size: 1.2rem; font-weight: 600;">0° N</p>
+                    </div>
+                    <div style="flex: 1;">
+                        <p style="margin: 0; font-size: 0.9rem; opacity: 0.8;">LONGITUDE</p>
+                        <p id="longitude" style="margin: 0; font-size: 1.2rem; font-weight: 600;">0° E</p>
+                    </div>
+                </div>
+                <div style="flex: 1;">
+                    <div id="gps-map"></div>
+                </div>
+            </div>
+
+            <!-- Velocity -->
+            <div class="card">
+                <h2>VELOCITY</h2>
+                <div style="flex: 1;">
+                    <canvas id="velocity-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Row -->
+        <div class="bottom-row">
+            <!-- 3D Views -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>3D VISUALIZATION</h2>
+                    <button class="maximize-btn" onclick="toggleFullscreen('rocket-3d')">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                </div>
+                <div class="orientation-container">
+                    <div>
+                        <h3 style="margin-top: 0; font-size: 0.9rem;">ORIENTATION</h3>
+                        <div id="rocket-3d" class="threeD-container"></div>
+                    </div>
+                    <div>
+                        <h3 style="margin-top: 0; font-size: 0.9rem;">TRAJECTORY</h3>
+                        <div id="trajectory-graph" class="threeD-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Countdown -->
+            <div class="card countdown-container">
+                <h2>COUNTDOWN</h2>
+                <p id="countdown">T-00:05:00</p>
+                <div class="launch-controls">
+                    <div class="status-indicators">
+                        <div class="status-item">
+                            <div class="status-dot dot-green" id="gyro-dot"></div>
+                            <span>GYRO</span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-dot dot-green" id="baro-dot"></div>
+                            <span>BARO</span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-dot dot-green" id="gps-dot"></div>
+                            <span>GPS</span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-dot dot-green" id="sdcard-dot"></div>
+                            <span>SD CARD</span>
+                        </div>
+                    </div>
+                    <button id="launch-btn">LAUNCH</button>
+                </div>
+            </div>
+
+            <!-- Flight Parameters -->
+            <div class="card">
+                <h2>FLIGHT PARAMETERS</h2>
+                <div class="param-grid">
+                    <div class="param-card">
+                        <h3>ALTITUDE</h3>
+                        <p id="altitude-value">0 <span>m</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>VELOCITY</h3>
+                        <p id="velocity-value">0 <span>m/s</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>ACCELERATION</h3>
+                        <p id="acceleration-value">0 <span>G</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>TEMPERATURE</h3>
+                        <p id="temperature-value">25 <span>°C</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>BATTERY</h3>
+                        <p id="battery-value">12.6 <span>V</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>THRUST</h3>
+                        <p id="thrust-value">0 <span>N</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Overlay -->
+    <div class="fullscreen-overlay" id="fullscreen-overlay">
+        <button class="close-fullscreen" onclick="closeFullscreen()">
+            <i class="fas fa-times"></i>
+        </button>
+        <div class="fullscreen-content" id="fullscreen-content"></div>
+    </div>
+
+    <script>
+        // ======================
+        // Simulation State
+        // ======================
+        let isPaused = false;
+        let isLaunching = false;
+        let launchTime = 0;
+        let currentTime = 0;
+        let simulationInterval;
+        
+        // Rocket flight parameters
+        const flightParams = {
+            maxAltitude: 59.8, // meters
+            maxVelocity: 31.5, // m/s
+            maxAcceleration: 35.4, // m/s²
+            burnoutTime: 1.8, // seconds
+            coastTime: 3.5, // seconds
+            totalFlightTime: 8.0 // seconds
+        };
+
+        // ======================
+        // 3D Rocket Visualization
+        // ======================
+        // Orientation View
+        const rocketScene = new THREE.Scene();
+        const rocketCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+        const rocketRenderer = new THREE.WebGLRenderer({ antialias: true });
+        const rocketContainer = document.getElementById('rocket-3d');
+        
+        rocketRenderer.setSize(rocketContainer.clientWidth, rocketContainer.clientHeight);
+        rocketContainer.appendChild(rocketRenderer.domElement);
+        
+        // Create rocket
+        const rocketGeometry = new THREE.CylinderGeometry(0.3, 0.1, 1.5, 32);
+        const rocketMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const rocket = new THREE.Mesh(rocketGeometry, rocketMaterial);
+        rocketScene.add(rocket);
+        
+        // Add grid helper
+        const gridHelper = new THREE.GridHelper(10, 10, 0x555555, 0x333333);
+        rocketScene.add(gridHelper);
+        
+        // Add axes helper
+        const axesHelper = new THREE.AxesHelper(3);
+        rocketScene.add(axesHelper);
+        
+        // Position camera at an angle looking down
+        rocketCamera.position.set(3, 5, 5);
+        rocketCamera.lookAt(0, 0, 0);
+        
+        // Trajectory View
+        const trajectoryScene = new THREE.Scene();
+        const trajectoryCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+        const trajectoryRenderer = new THREE.WebGLRenderer({ antialias: true });
+        const trajectoryContainer = document.getElementById('trajectory-graph');
+        
+        trajectoryRenderer.setSize(trajectoryContainer.clientWidth, trajectoryContainer.clientHeight);
+        trajectoryContainer.appendChild(trajectoryRenderer.domElement);
+        
+        // Create trajectory line
+        const trajectoryPoints = [];
+        const trajectoryGeometry = new THREE.BufferGeometry();
+        const trajectoryMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+        const trajectoryLine = new THREE.Line(trajectoryGeometry, trajectoryMaterial);
+        trajectoryScene.add(trajectoryLine);
+        
+        // Add grid to trajectory view
+        const trajectoryGrid = new THREE.GridHelper(20, 20, 0x555555, 0x333333);
+        trajectoryScene.add(trajectoryGrid);
+        
+        // Position trajectory camera
+        trajectoryCamera.position.set(5, 10, 5);
+        trajectoryCamera.lookAt(0, 0, 0);
+        
+        // ======================
+        // Flight Simulation
+        // ======================
+        function calculateFlightParameters(t) {
+            let altitude = 0;
+            let velocity = 0;
+            let acceleration = 0;
+            let thrust = 0;
+            
+            if (t < flightParams.burnoutTime) {
+                // Boost phase
+                const tNorm = t / flightParams.burnoutTime;
+                thrust = 1000 * (1 - tNorm);
+                acceleration = flightParams.maxAcceleration * (1 - tNorm * 0.5);
+                velocity = flightParams.maxVelocity * tNorm;
+                altitude = 0.5 * acceleration * t * t;
+            } else if (t < flightParams.coastTime) {
+                // Coast phase
+                const coastT = t - flightParams.burnoutTime;
+                thrust = 0;
+                acceleration = -9.8; // Gravity
+                velocity = flightParams.maxVelocity + acceleration * coastT;
+                altitude = flightParams.maxAltitude * 0.7 + 
+                          flightParams.maxVelocity * coastT + 
+                          0.5 * acceleration * coastT * coastT;
+            } else {
+                // Descent phase
+                const descentT = t - flightParams.coastTime;
+                thrust = 0;
+                acceleration = -9.8 + (Math.random() * 2 - 1); // Gravity with some turbulence
+                velocity = -flightParams.maxVelocity * 0.3 * (1 - Math.exp(-descentT));
+                altitude = flightParams.maxAltitude * Math.exp(-descentT * 0.5);
+            }
+            
+            // Add some realistic noise
+            altitude += (Math.random() - 0.5) * 0.2;
+            velocity += (Math.random() - 0.5) * 0.1;
+            acceleration += (Math.random() - 0.5) * 0.5;
+            
+            return {
+                altitude: Math.max(0, altitude),
+                velocity: velocity,
+                acceleration: acceleration,
+                thrust: Math.max(0, thrust)
+            };
+        }
+
+        function updateRocketOrientation(t) {
+            if (t < flightParams.burnoutTime) {
+                // Small vibrations during launch
+                rocket.rotation.x = Math.sin(t * 20) * 0.05;
+                rocket.rotation.y = Math.cos(t * 18) * 0.05;
+            } else if (t < flightParams.coastTime) {
+                // Stabilize during coast
+                rocket.rotation.x = 0;
+                rocket.rotation.y = 0;
+            } else {
+                // Tumble during descent
+                rocket.rotation.x = t * 0.5;
+                rocket.rotation.y = t * 0.3;
+            }
+        }
+
+        function updateTrajectory(t, params) {
+            const x = Math.sin(t) * 2;
+            const z = Math.cos(t) * 2;
+            const y = params.altitude / 10; // Scale down for visualization
+            
+            trajectoryPoints.push(new THREE.Vector3(x, y, z));
+            
+            if (trajectoryPoints.length > 100) {
+                trajectoryPoints.shift();
+            }
+            
+            trajectoryGeometry.setFromPoints(trajectoryPoints);
+        }
+
+        function updateCharts(t, params) {
+            // Update altitude chart
+            altitudeChart.data.labels.push('');
+            altitudeChart.data.datasets[0].data.push(params.altitude);
+            if (altitudeChart.data.labels.length > 20) {
+                altitudeChart.data.labels.shift();
+                altitudeChart.data.datasets[0].data.shift();
+            }
+            altitudeChart.update();
+            
+            // Update velocity chart
+            velocityChart.data.labels.push('');
+            velocityChart.data.datasets[0].data.push(params.velocity);
+            if (velocityChart.data.labels.length > 20) {
+                velocityChart.data.labels.shift();
+                velocityChart.data.datasets[0].data.shift();
+            }
+            velocityChart.update();
+        }
+
+        function updateFlightParameters(params) {
+            document.getElementById('altitude-value').innerHTML = `${params.altitude.toFixed(1)} <span>m</span>`;
+            document.getElementById('velocity-value').innerHTML = `${Math.abs(params.velocity).toFixed(1)} <span>m/s</span>`;
+            document.getElementById('acceleration-value').innerHTML = `${(params.acceleration / 9.8).toFixed(1)} <span>G</span>`;
+            document.getElementById('thrust-value').innerHTML = `${params.thrust.toFixed(0)} <span>N</span>`;
+            
+            // Update GPS coordinates slightly during flight
+            const lat = 28.5 + params.altitude / 10000;
+            const lng = -80.5 + params.altitude / 10000;
+            document.getElementById('latitude').textContent = `${lat.toFixed(4)}° N`;
+            document.getElementById('longitude').textContent = `${lng.toFixed(4)}° W`;
+            rocketMarker.setLatLng([lat, lng]);
+            
+            // Update temperature (simulate heating during flight)
+            const temp = 25 + (params.altitude / flightParams.maxAltitude) * 15;
+            document.getElementById('temperature-value').innerHTML = `${temp.toFixed(1)} <span>°C</span>`;
+            
+            // Update battery (simulate drain during flight)
+            const battery = 12.6 - (t / flightParams.totalFlightTime) * 0.5;
+            document.getElementById('battery-value').innerHTML = `${battery.toFixed(2)} <span>V</span>`;
+        }
+
+        function runSimulation() {
+            if (isPaused) return;
+            
+            currentTime += 0.1;
+            const params = calculateFlightParameters(currentTime);
+            
+            updateRocketOrientation(currentTime);
+            updateTrajectory(currentTime, params);
+            updateCharts(currentTime, params);
+            updateFlightParameters(params);
+            
+            if (currentTime >= flightParams.totalFlightTime) {
+                clearInterval(simulationInterval);
+                isLaunching = false;
+                document.getElementById('launch-btn').textContent = "RESET";
+            }
+        }
+
+        function startCountdown() {
+            let countdown = 5;
+            document.getElementById('countdown').textContent = `T-00:0${countdown}:00`;
+            
+            const countdownInterval = setInterval(() => {
+                if (isPaused) return;
+                
+                countdown--;
+                document.getElementById('countdown').textContent = `T-00:0${countdown}:00`;
+                
+                if (countdown <= 0) {
+                    clearInterval(countdownInterval);
+                    document.getElementById('countdown').textContent = "IGNITION!";
+                    setTimeout(() => {
+                        document.getElementById('countdown').textContent = "LIFTOFF!";
+                        startLaunch();
+                    }, 1000);
+                }
+            }, 1000);
+        }
+
+        function startLaunch() {
+            isLaunching = true;
+            launchTime = Date.now();
+            currentTime = 0;
+            
+            // Clear previous trajectory
+            trajectoryPoints.length = 0;
+            trajectoryGeometry.setFromPoints(trajectoryPoints);
+            
+            // Reset charts
+            altitudeChart.data.labels = Array(20).fill('');
+            altitudeChart.data.datasets[0].data = Array(20).fill(0);
+            altitudeChart.update();
+            
+            velocityChart.data.labels = Array(20).fill('');
+            velocityChart.data.datasets[0].data = Array(20).fill(0);
+            velocityChart.update();
+            
+            simulationInterval = setInterval(runSimulation, 100);
+        }
+
+        function resetSimulation() {
+            clearInterval(simulationInterval);
+            isLaunching = false;
+            currentTime = 0;
+            
+            // Reset rocket orientation
+            rocket.rotation.set(0, 0, 0);
+            
+            // Clear trajectory
+            trajectoryPoints.length = 0;
+            trajectoryGeometry.setFromPoints(trajectoryPoints);
+            
+            // Reset parameters
+            document.getElementById('altitude-value').innerHTML = `0 <span>m</span>`;
+            document.getElementById('velocity-value').innerHTML = `0 <span>m/s</span>`;
+            document.getElementById('acceleration-value').innerHTML = `0 <span>G</span>`;
+            document.getElementById('thrust-value').innerHTML = `0 <span>N</span>`;
+            document.getElementById('temperature-value').innerHTML = `25 <span>°C</span>`;
+            document.getElementById('battery-value').innerHTML = `12.6 <span>V</span>`;
+            
+            // Reset GPS
+            document.getElementById('latitude').textContent = `28.5000° N`;
+            document.getElementById('longitude').textContent = `-80.5000° W`;
+            rocketMarker.setLatLng([28.5, -80.5]);
+            
+            // Reset countdown
+            document.getElementById('countdown').textContent = "T-00:05:00";
+            document.getElementById('launch-btn').textContent = "LAUNCH";
+        }
+
+        // ======================
+        // Fullscreen Functionality
+        // ======================
+        function toggleFullscreen(viewId) {
+            const overlay = document.getElementById('fullscreen-overlay');
+            const content = document.getElementById('fullscreen-content');
+            
+            // Create a new canvas for fullscreen
+            content.innerHTML = `
+                <div style="width:100%;height:100%;position:relative;">
+                    <canvas id="fullscreen-canvas" style="width:100%;height:100%;"></canvas>
+                    <h2 style="position:absolute;top:10px;left:10px;margin:0;color:white;">
+                        ${viewId === 'rocket-3d' ? '3D ORIENTATION' : '3D TRAJECTORY'}
+                    </h2>
+                </div>
+            `;
+            
+            const canvas = document.getElementById('fullscreen-canvas');
+            const fullscreenRenderer = new THREE.WebGLRenderer({ 
+                antialias: true, 
+                canvas: canvas 
+            });
+            fullscreenRenderer.setSize(content.clientWidth, content.clientHeight);
+            
+            // Animation loop for fullscreen
+            function animateFullscreen() {
+                requestAnimationFrame(animateFullscreen);
+                
+                if (viewId === 'rocket-3d') {
+                    fullscreenRenderer.render(rocketScene, rocketCamera);
+                } else {
+                    fullscreenRenderer.render(trajectoryScene, trajectoryCamera);
+                }
+            }
+            
+            animateFullscreen();
+            overlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeFullscreen() {
+            document.getElementById('fullscreen-overlay').style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        // ======================
+        // GPS Map (Leaflet)
+        // ======================
+        const map = L.map('gps-map').setView([28.5, -80.5], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+        
+        const rocketMarker = L.marker([28.5, -80.5]).addTo(map)
+            .bindPopup("Launch Site")
+            .openPopup();
+
+        // ======================
+        // Charts
+        // ======================
+        const altitudeCtx = document.getElementById('altitude-chart').getContext('2d');
+        const altitudeChart = new Chart(altitudeCtx, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''),
+                datasets: [{
+                    data: Array(20).fill(0),
+                    borderColor: '#0a84ff',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    backgroundColor: 'rgba(10, 132, 255, 0.1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+
+        const velocityCtx = document.getElementById('velocity-chart').getContext('2d');
+        const velocityChart = new Chart(velocityCtx, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''),
+                datasets: [{
+                    data: Array(20).fill(0),
+                    borderColor: '#30d158',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    backgroundColor: 'rgba(48, 209, 88, 0.1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+
+        // ======================
+        // Event Listeners
+        // ======================
+        document.getElementById('pause-btn').addEventListener('click', function() {
+            isPaused = !isPaused;
+            this.textContent = isPaused ? "RESUME" : "PAUSE";
+            this.classList.toggle('red', !isPaused);
+        });
+
+        document.getElementById('launch-btn').addEventListener('click', function() {
+            if (isLaunching) {
+                resetSimulation();
+            } else {
+                startCountdown();
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (!isPaused) {
+                rocketRenderer.render(rocketScene, rocketCamera);
+                trajectoryRenderer.render(trajectoryScene, trajectoryCamera);
+            }
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
