@@ -491,6 +491,7 @@
         // ======================
         let isPaused = false;
         let isLaunching = false;
+        let isFreeFalling = false; // New state variable
         let launchTime = 0;
         let currentTime = 0;
         let simulationInterval;
@@ -502,7 +503,8 @@
             maxAcceleration: 35.4, // m/s²
             burnoutTime: 1.8, // seconds
             coastTime: 3.5, // seconds
-            totalFlightTime: 8.0, // seconds
+            totalFlightTime: 8.0, // seconds (end of controlled flight/peak altitude)
+            freeFallDuration: 10.0, // seconds (how long free fall is simulated after totalFlightTime)
             gravity: 9.81, // m/s²
             dragCoefficient: 0.2,
             rocketMass: 1.5 // kg
@@ -568,6 +570,11 @@
         // ======================
         // Physics Simulation
         // ======================
+        let lastAltitude = 0; // To store altitude at totalFlightTime
+        let lastVelocity = 0; // To store velocity at totalFlightTime
+        let lastX = 0; // To store last X position for trajectory
+        let lastZ = 0; // To store last Z position for trajectory
+
         function calculateFlightParameters(t) {
             let altitude = 0;
             let velocity = 0;
@@ -597,8 +604,8 @@
                 altitude = (0.5 * flightParams.maxAcceleration * Math.pow(flightParams.burnoutTime, 2)) + 
                           (flightParams.maxVelocity * coastT) + 
                           (0.5 * acceleration * Math.pow(coastT, 2));
-            } else {
-                // Descent phase (free fall with drag)
+            } else if (t < flightParams.totalFlightTime) {
+                // Descent phase (free fall with drag) - up to totalFlightTime
                 const descentT = t - flightParams.coastTime;
                 thrust = 0;
                 
@@ -616,6 +623,31 @@
                 
                 // Altitude decreases
                 altitude = flightParams.maxAltitude * Math.exp(-descentT * 0.5);
+
+                // Store values at the end of the main flight phase
+                if (t >= flightParams.totalFlightTime - 0.1 && t <= flightParams.totalFlightTime + 0.1) {
+                    lastAltitude = altitude;
+                    lastVelocity = velocity;
+                }
+
+            } else {
+                // Free Fall Phase (after totalFlightTime)
+                isFreeFalling = true;
+                const freeFallT = t - flightParams.totalFlightTime;
+                thrust = 0;
+                
+                // Simple free fall with increasing negative velocity
+                // Assuming it starts from lastAltitude and lastVelocity
+                velocity = lastVelocity - (flightParams.gravity * freeFallT);
+                altitude = lastAltitude + (lastVelocity * freeFallT) - (0.5 * flightParams.gravity * freeFallT * freeFallT);
+                acceleration = -flightParams.gravity; // Constant gravity
+                
+                // Ensure altitude doesn't go below zero
+                if (altitude < 0) {
+                    altitude = 0;
+                    velocity = 0;
+                    acceleration = 0;
+                }
             }
             
             // Add some realistic noise
@@ -632,7 +664,16 @@
         }
 
         function updateRocketOrientation(t) {
-            if (t < flightParams.burnoutTime) {
+            if (isFreeFalling) {
+                // Continuous tumble during free fall
+                const freeFallT = t - flightParams.totalFlightTime;
+                const tumbleSpeed = 0.5 + (freeFallT * 0.1); // Tumble speed increases over time
+                
+                rocket.rotation.x += tumbleSpeed * 0.05;
+                rocket.rotation.y += tumbleSpeed * 0.07;
+                rocket.rotation.z += tumbleSpeed * 0.03;
+
+            } else if (t < flightParams.burnoutTime) {
                 // Small vibrations during launch
                 rocket.rotation.x = Math.sin(t * 20) * 0.05;
                 rocket.rotation.y = Math.cos(t * 18) * 0.05;
@@ -643,7 +684,7 @@
                 rocket.rotation.y = 0;
                 rocket.rotation.z = 0;
             } else {
-                // Tumble during descent with realistic physics
+                // Tumble during descent with realistic physics (before free fall phase)
                 const descentT = t - flightParams.coastTime;
                 const tumbleRate = 0.5 * (1 - Math.exp(-descentT * 0.5));
                 
@@ -654,8 +695,24 @@
         }
 
         function updateTrajectory(t, params) {
-            const x = Math.sin(t) * 2;
-            const z = Math.cos(t) * 2;
+            let x, z;
+
+            if (isFreeFalling) {
+                // During free fall, maintain last horizontal position or slight drift
+                // The y coordinate will be based on altitude
+                x = lastX + (Math.sin(t * 0.1) * 0.05); // Slight horizontal drift
+                z = lastZ + (Math.cos(t * 0.1) * 0.05); // Slight horizontal drift
+            } else {
+                // Normal flight trajectory
+                x = Math.sin(t) * 2;
+                z = Math.cos(t) * 2;
+                // Store last x and z before free fall
+                if (t >= flightParams.totalFlightTime - 0.1 && t <= flightParams.totalFlightTime + 0.1) {
+                    lastX = x;
+                    lastZ = z;
+                }
+            }
+            
             const y = params.altitude / 10; // Scale down for visualization
             
             trajectoryPoints.push(new THREE.Vector3(x, y, z));
@@ -693,19 +750,25 @@
             document.getElementById('acceleration-value').innerHTML = `${(params.acceleration / 9.8).toFixed(1)} <span>G</span>`;
             document.getElementById('thrust-value').innerHTML = `${params.thrust.toFixed(0)} <span>N</span>`;
             
-            // Update GPS coordinates slightly during flight
+            // Update GPS coordinates slightly during flight and free fall
             const lat = 24.7466 + (params.altitude / 100000);
             const lng = 90.4040 + (params.altitude / 100000);
             document.getElementById('latitude').textContent = `${lat.toFixed(4)}° N`;
             document.getElementById('longitude').textContent = `${lng.toFixed(4)}° E`;
             rocketMarker.setLatLng([lat, lng]);
             
-            // Update temperature (simulate heating during flight)
-            const temp = 25 + (params.altitude / flightParams.maxAltitude) * 15;
+            // Update temperature (simulate heating during flight, cooling during free fall)
+            let temp;
+            if (isFreeFalling) {
+                temp = 40 - (currentTime - flightParams.totalFlightTime) * 2; // Cool down
+                if (temp < 25) temp = 25;
+            } else {
+                temp = 25 + (params.altitude / flightParams.maxAltitude) * 15;
+            }
             document.getElementById('temperature-value').innerHTML = `${temp.toFixed(1)} <span>°C</span>`;
             
-            // Update battery (simulate drain during flight)
-            const battery = 12.6 - (t / flightParams.totalFlightTime) * 0.5;
+            // Update battery (simulate drain during flight, less drain during free fall)
+            const battery = 12.6 - (currentTime / (flightParams.totalFlightTime + flightParams.freeFallDuration)) * 0.5;
             document.getElementById('battery-value').innerHTML = `${battery.toFixed(2)} <span>V</span>`;
         }
 
@@ -720,10 +783,18 @@
             updateCharts(currentTime, params);
             updateFlightParameters(params);
             
-            if (currentTime >= flightParams.totalFlightTime) {
+            // Check if the entire simulation (flight + free fall) has ended
+            if (currentTime >= flightParams.totalFlightTime + flightParams.freeFallDuration) {
                 clearInterval(simulationInterval);
                 isLaunching = false;
+                isFreeFalling = false; // Reset free fall state
                 document.getElementById('launch-btn').textContent = "RESET";
+                // Ensure altitude is exactly 0 at the end
+                document.getElementById('altitude-value').innerHTML = `0.0 <span>m</span>`;
+                document.getElementById('velocity-value').innerHTML = `0.0 <span>m/s</span>`;
+                document.getElementById('acceleration-value').innerHTML = `0.0 <span>G</span>`;
+                document.getElementById('thrust-value').innerHTML = `0 <span>N</span>`;
+                rocketMarker.setLatLng([24.7466, 90.4040]); // Reset GPS marker
             }
         }
 
@@ -750,8 +821,13 @@
 
         function startLaunch() {
             isLaunching = true;
+            isFreeFalling = false; // Ensure free fall is false at launch
             launchTime = Date.now();
             currentTime = 0;
+            lastAltitude = 0;
+            lastVelocity = 0;
+            lastX = 0;
+            lastZ = 0;
             
             // Clear previous trajectory
             trajectoryPoints.length = 0;
@@ -772,7 +848,12 @@
         function resetSimulation() {
             clearInterval(simulationInterval);
             isLaunching = false;
+            isFreeFalling = false; // Reset free fall state
             currentTime = 0;
+            lastAltitude = 0;
+            lastVelocity = 0;
+            lastX = 0;
+            lastZ = 0;
             
             // Reset rocket orientation
             rocket.rotation.set(0, 0, 0);
