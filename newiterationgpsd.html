@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Telemetry | Project Neal Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            /* Dark Theme (Default) */
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --card-color: rgba(28, 28, 30, 0.7);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --grid-color: rgba(255, 255, 255, 0.1);
+            --param-bg-color: rgba(0, 0, 0, 0.2);
+
+            /* Accent Colors */
+            --blue: #0a84ff;
+            --green: #30d158;
+            --orange: #ff9f0a;
+            --red: #ff453a;
+            --yellow: #ffd60a;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        
+        body[data-theme="light"] {
+            --bg-color: #f0f0f5;
+            --text-color: #1d1d1f;
+            --card-color: rgba(255, 255, 255, 0.7);
+            --border-color: rgba(0, 0, 0, 0.1);
+            --grid-color: rgba(0, 0, 0, 0.1);
+            --param-bg-color: rgba(0, 0, 0, 0.05);
+        }
+        
+        body[data-theme="light"] #logo {
+            filter: invert(1);
+        }
+
+        .title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+        
+        #logo {
+            height: 35px;
+        }
+
+        .title-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        body[data-theme="light"] .control-btn {
+             background: rgba(0, 0, 0, 0.05);
+        }
+        .control-btn:hover { background: rgba(255, 255, 255, 0.2); }
+        body[data-theme="light"] .control-btn:hover { background: rgba(0, 0, 0, 0.1); }
+        
+        .control-btn.green { background: var(--green); color: black; font-weight: 600; }
+        .control-btn.yellow { background: var(--yellow); color: black; font-weight: 600; }
+        .control-btn.blue { background: var(--blue); color: white; }
+        .control-btn.red { background: var(--red); color: white; }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1fr; /* Left, Center, Right */
+            grid-template-rows: 45% 53%;
+            gap: 20px;
+            flex-grow: 1;
+            max-width: 1800px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--card-color);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: background 0.3s ease, border 0.3s ease;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-shrink: 0;
+        }
+
+        .card h2 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            opacity: 0.8;
+            text-transform: uppercase;
+        }
+        
+        .card-content {
+            flex-grow: 1;
+            position: relative;
+        }
+
+        .threeD-container, canvas, #gps-map {
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-radius: 8px;
+        }
+
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            height: 100%;
+        }
+
+        .param-card {
+            background: var(--param-bg-color);
+            padding: 15px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            transition: background 0.3s ease;
+        }
+
+        .param-card h3 {
+            margin: 0 0 5px 0;
+            font-size: 0.8rem;
+            opacity: 0.7;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .param-card p {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 600;
+            font-family: 'SF Mono', 'Source Code Pro', monospace;
+            color: var(--text-color);
+            transition: color 0.3s ease;
+        }
+        .param-card p.blue { color: var(--blue); }
+        .param-card p.green { color: var(--green); }
+        .param-card p.orange { color: var(--orange); }
+        .param-card p.yellow { color: var(--yellow); }
+
+        .param-card span {
+            font-size: 1rem;
+            opacity: 0.7;
+            margin-left: 5px;
+        }
+        
+        #altitude-chart-container { grid-column: 1 / 2; grid-row: 1 / 2; }
+        #params-container { grid-column: 1 / 2; grid-row: 2 / 3; }
+
+        #rocket-3d-container { grid-column: 2 / 3; grid-row: 1 / 3; }
+
+        #trajectory-container { grid-column: 3 / 4; grid-row: 1 / 2; }
+        #status-container { grid-column: 3 / 4; grid-row: 2 / 3; }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            height: 100%;
+        }
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--param-bg-color);
+            padding: 15px;
+            border-radius: 12px;
+            transition: background 0.3s ease;
+        }
+        .status-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .dot-green { background: var(--green); box-shadow: 0 0 10px var(--green); }
+        .dot-red { background: var(--red); }
+        .status-item span { font-size: 1rem; font-weight: 500; }
+
+        #countdown-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            font-family: 'SF Mono', 'Source Code Pro', monospace;
+        }
+        #countdown-timer { font-size: 15vw; font-weight: 700; }
+        #countdown-label { font-size: 5vw; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div class="title-bar">
+        <img id="logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA+gAAABGCAYAAABRz2gUAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAANsSURBVHhe7dJBDQAgDAAxtI/6d7A/FBwSRcR1A/A3zD/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/g/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8z/zP/M/8-
+        <div class="title-controls">
+            <button id="connect-btn" class="control-btn">CONNECT</button>
+            <button id="launch-btn" class="control-btn red">LAUNCH</button>
+            <button id="save-data-btn" class="control-btn blue">SAVE DATA</button>
+            <button id="theme-toggle-btn" class="control-btn"><i class="fas fa-sun"></i></button>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <!-- Left Column -->
+        <div class="card" id="altitude-chart-container">
+            <div class="card-header"><h2>ALTITUDE (m)</h2></div>
+            <div class="card-content"><canvas id="altitude-chart"></canvas></div>
+        </div>
+        <div class="card" id="params-container">
+            <div class="card-header"><h2>FLIGHT PARAMETERS</h2></div>
+            <div class="card-content param-grid">
+                <div class="param-card"><h3>ROLL</h3><p id="param-roll">0.0 <span>deg</span></p></div>
+                <div class="param-card"><h3>PITCH</h3><p id="param-pitch">0.0 <span>deg</span></p></div>
+                <div class="param-card"><h3>APOGEE</h3><p id="param-apogee" class="blue">0.0 <span>m</span></p></div>
+                <div class="param-card"><h3>MAX VELOCITY</h3><p id="param-max-velocity" class="green">0.0 <span>m/s</span></p></div>
+                <div class="param-card"><h3>PRESSURE</h3><p id="param-pressure" class="orange">0 <span>hPa</span></p></div>
+                <div class="param-card"><h3>TEMPERATURE</h3><p id="param-temp" class="yellow">0.0 <span>°C</span></p></div>
+            </div>
+        </div>
+
+        <!-- Center Column -->
+        <div class="card" id="rocket-3d-container">
+            <div class="card-header"><h2>3D ORIENTATION</h2></div>
+            <div class="card-content threeD-container" id="rocket-3d"></div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="card" id="trajectory-container">
+            <div class="card-header"><h2>TRAJECTORY & MAP</h2></div>
+            <div class="card-content" id="gps-map"></div>
+        </div>
+        <div class="card" id="status-container">
+            <div class="card-header"><h2>SYSTEM STATUS</h2></div>
+            <div class="card-content status-grid">
+                <div class="status-item"><div class="status-dot dot-red" id="mpu-dot"></div><span>MPU6050</span></div>
+                <div class="status-item"><div class="status-dot dot-red" id="bme-dot"></div><span>BME280</span></div>
+                <div class="status-item"><div class="status-dot dot-red" id="sd-dot"></div><span>SD CARD</span></div>
+                <div class="status-item"><div class="status-dot dot-red" id="lora-dot"></div><span>LORA LINK</span></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="countdown-container">
+        <p id="countdown-label">T-</p>
+        <p id="countdown-timer">10</p>
+    </div>
+
+    <script>
+        // =================================================================
+        // INITIALIZATION
+        // =================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            init3D();
+            initCharts();
+            initMap();
+            loadTheme();
+        });
+
+        // =================================================================
+        // 3D ROCKET VISUALIZATION (THREE.JS)
+        // =================================================================
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const container = document.getElementById('rocket-3d');
+        let rocket, nozzle;
+
+        function init3D() {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            renderer.setSize(width, height);
+            container.appendChild(renderer.domElement);
+
+            const rocketGroup = new THREE.Group();
+            const bodyGeo = new THREE.CylinderGeometry(0.15, 0.15, 2, 32);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            
+            const noseGeo = new THREE.ConeGeometry(0.15, 0.5, 32);
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0xff453a, metalness: 0.5, roughness: 0.3 });
+            const nose = new THREE.Mesh(noseGeo, noseMat);
+            nose.position.y = 1.25;
+
+            const nozzleGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.2, 32);
+            const nozzleMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.9, roughness: 0.4 });
+            nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+            nozzle.position.y = -1.1;
+
+            rocketGroup.add(body);
+            rocketGroup.add(nose);
+            rocketGroup.add(nozzle);
+            rocket = rocketGroup;
+            scene.add(rocket);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            const gridHelper = new THREE.GridHelper(10, 20, 0x555555, 0x333333);
+            scene.add(gridHelper);
+
+            camera.position.set(2, 2, 3);
+            camera.lookAt(0, 0, 0);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            }
+            animate();
+            
+            window.addEventListener('resize', () => {
+                const w = container.clientWidth;
+                const h = container.clientHeight;
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+                renderer.setSize(w, h);
+            });
+        }
+
+        // =================================================================
+        // CHARTS, MAP, AND DATA STATE
+        // =================================================================
+        let altitudeChart, velocityChart, map, rocketMarker;
+        let maxAltitude = 0, maxVelocity = 0;
+        let flightDataHistory = [];
+        let isLogging = false;
+        const initialCoords = [24.7255, 90.4103]; // Mymensingh-Dhaka Bypass
+
+        function initCharts() {
+            const chartOptions = (isLight) => ({
+                responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                scales: {
+                    y: { ticks: { color: isLight ? '#333' : 'rgba(255,255,255,0.7)' }, grid: { color: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' } },
+                    x: { ticks: { display: false }, grid: { display: false } }
+                }
+            });
+            altitudeChart = new Chart(document.getElementById('altitude-chart'), { type: 'line', data: { labels: Array(30).fill(''), datasets: [{ data: Array(30).fill(0), borderColor: 'var(--blue)', borderWidth: 2, tension: 0.4, fill: true, backgroundColor: 'rgba(10, 132, 255, 0.1)', pointRadius: 0 }] }, options: chartOptions(false) });
+            velocityChart = new Chart(document.getElementById('velocity-chart'), { type: 'line', data: { labels: Array(30).fill(''), datasets: [{ data: Array(30).fill(0), borderColor: 'var(--green)', borderWidth: 2, tension: 0.4, fill: true, backgroundColor: 'rgba(48, 209, 88, 0.1)', pointRadius: 0 }] }, options: chartOptions(false) });
+        }
+
+        function initMap() {
+            map = L.map('gps-map').setView(initialCoords, 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            rocketMarker = L.marker(initialCoords).addTo(map);
+        }
+        
+        function updateChart(chart, newData) {
+            chart.data.datasets[0].data.shift();
+            chart.data.datasets[0].data.push(newData);
+            chart.update('none');
+        }
+
+        // =================================================================
+        // WEB SERIAL API & DATA HANDLING
+        // =================================================================
+        const connectBtn = document.getElementById('connect-btn');
+        const saveDataBtn = document.getElementById('save-data-btn');
+        const launchBtn = document.getElementById('launch-btn');
+        let port, writer;
+        let lastDataTimestamp = 0;
+        let heartbeatInterval;
+
+        connectBtn.addEventListener('click', async () => {
+            if (port) {
+                try { 
+                    clearInterval(heartbeatInterval);
+                    await writer.close(); 
+                    await port.close(); 
+                } catch(e) {}
+                port = null; writer = null;
+                connectBtn.textContent = 'CONNECT';
+                connectBtn.classList.remove('green', 'yellow');
+                return;
+            }
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                writer = port.writable.getWriter();
+                connectBtn.textContent = 'CONNECTED';
+                connectBtn.classList.add('green');
+                lastDataTimestamp = Date.now();
+                
+                heartbeatInterval = setInterval(() => {
+                    if (Date.now() - lastDataTimestamp > 2000) {
+                        connectBtn.classList.remove('green');
+                        connectBtn.classList.add('yellow');
+                        connectBtn.textContent = 'NO SIGNAL';
+                    }
+                }, 1000);
+
+                readFromPort();
+            } catch (error) {
+                alert('Could not connect to serial port. Make sure you are using Chrome or Edge.');
+            }
+        });
+
+        async function readFromPort() {
+            const textDecoder = new TextDecoderStream();
+            port.readable.pipeTo(textDecoder.writable);
+            const reader = textDecoder.readable.getReader();
+            let lineBuffer = '';
+
+            while (port && port.readable) {
+                try {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    lineBuffer += value;
+                    let lines = lineBuffer.split('\r\n');
+                    lineBuffer = lines.pop();
+                    lines.forEach(processLine);
+                } catch (error) {
+                    console.error('Error reading from port:', error);
+                    break;
+                }
+            }
+             reader.releaseLock();
+        }
+        
+        function processLine(line) {
+            if (!line) return;
+            
+            lastDataTimestamp = Date.now();
+            connectBtn.classList.remove('yellow');
+            connectBtn.classList.add('green');
+            connectBtn.textContent = 'CONNECTED';
+
+            if (isLogging) {
+                flightDataHistory.push(line);
+            }
+
+            document.getElementById('mpu-dot').className = 'status-dot dot-green';
+            document.getElementById('bme-dot').className = 'status-dot dot-green';
+            document.getElementById('lora-dot').className = 'status-dot dot-green';
+            document.getElementById('sd-dot').className = 'status-dot dot-green';
+
+            const values = line.trim().split(',');
+            if (values.length === 7) {
+                const [roll, pitch, altitude, temp, pressure, accel, velocity] = values.map(parseFloat);
+                
+                if (rocket && nozzle) {
+                    rocket.rotation.x = THREE.MathUtils.degToRad(pitch);
+                    rocket.rotation.z = THREE.MathUtils.degToRad(-roll);
+                    nozzle.rotation.z = THREE.MathUtils.degToRad(roll * 2.5);
+                    nozzle.rotation.x = THREE.MathUtils.degToRad(-pitch * 2.5);
+                }
+
+                updateChart(altitudeChart, altitude);
+                updateChart(velocityChart, velocity);
+                
+                if (altitude > maxAltitude) maxAltitude = altitude;
+                if (velocity > maxVelocity) maxVelocity = velocity;
+                
+                document.getElementById('param-roll').innerHTML = `${roll.toFixed(1)} <span>deg</span>`;
+                document.getElementById('param-pitch').innerHTML = `${pitch.toFixed(1)} <span>deg</span>`;
+                document.getElementById('param-pressure').innerHTML = `${pressure.toFixed(0)} <span>hPa</span>`;
+                document.getElementById('param-temp').innerHTML = `${temp.toFixed(1)} <span>°C</span>`;
+                document.getElementById('param-apogee').innerHTML = `${maxAltitude.toFixed(1)} <span>m</span>`;
+                document.getElementById('param-max-velocity').innerHTML = `${maxVelocity.toFixed(1)} <span>m/s</span>`;
+
+                // Simulate GPS movement
+                const randomLatOffset = (Math.random() - 0.5) * 0.0001; // Approx 11 meters
+                const randomLngOffset = (Math.random() - 0.5) * 0.0001;
+                const newLatLng = [initialCoords[0] + randomLatOffset, initialCoords[1] + randomLngOffset];
+                rocketMarker.setLatLng(newLatLng);
+                map.panTo(newLatLng);
+            }
+        }
+
+        launchBtn.addEventListener('click', async () => {
+            if (!port || !writer) {
+                alert('Connect to the ground station first!');
+                return;
+            }
+            
+            const countdownContainer = document.getElementById('countdown-container');
+            const countdownTimer = document.getElementById('countdown-timer');
+            countdownContainer.style.display = 'flex';
+            
+            let count = 10;
+            countdownTimer.textContent = count;
+            
+            const interval = setInterval(() => {
+                count--;
+                countdownTimer.textContent = count;
+                if (count < 0) {
+                    clearInterval(interval);
+                    countdownContainer.style.display = 'none';
+                    isLogging = true; // Start logging data after countdown
+                    flightDataHistory = []; // Clear any pre-launch data
+                    maxAltitude = 0;
+                    maxVelocity = 0;
+                }
+            }, 1000);
+
+            try {
+                await writer.write(new TextEncoder().encode('l\n'));
+            } catch (error) {
+                console.error('Error writing to port:', error);
+            }
+        });
+
+        saveDataBtn.addEventListener('click', () => {
+            if (flightDataHistory.length === 0) {
+                alert("No flight data has been logged yet! Launch first.");
+                return;
+            }
+
+            const header = "Roll,Pitch,Altitude,Temp,Pressure,NetAccel,Velocity\n";
+            const csvContent = header + flightDataHistory.join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "ProjectNeal_FlightData.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        // --- Theme Switcher ---
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        
+        function setChartTheme(isLight) {
+            const tickColor = isLight ? '#333' : 'rgba(255,255,255,0.7)';
+            const gridColor = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+            [altitudeChart, velocityChart].forEach(chart => {
+                chart.options.scales.y.ticks.color = tickColor;
+                chart.options.scales.x.ticks.color = tickColor;
+                chart.options.scales.y.grid.color = gridColor;
+                chart.update();
+            });
+        }
+
+        function setTheme(theme) {
+            document.body.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            themeToggleBtn.innerHTML = theme === 'light' ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
+            setChartTheme(theme === 'light');
+        }
+
+        function loadTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            setTheme(savedTheme);
+        }
+
+        themeToggleBtn.addEventListener('click', () => {
+            const currentTheme = document.body.getAttribute('data-theme');
+            setTheme(currentTheme === 'light' ? 'dark' : 'light');
+        });
+
+        window.onload = () => {
+            init3D();
+            initCharts();
+            initMap();
+            loadTheme();
+        };
+    </script>
+</body>
+</html>
