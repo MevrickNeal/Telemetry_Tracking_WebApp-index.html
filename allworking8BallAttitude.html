@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Telemetry | Project Neal Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --text-dark: #e0e0e0;
+            --card-dark: rgba(28, 28, 30, 0.7);
+            --border-dark: rgba(255, 255, 255, 0.1);
+            --blue: #0a84ff;
+            --green: #30d158;
+            --orange: #ff9f0a;
+            --red: #ff453a;
+            --yellow: #ffd60a;
+            --sky-blue: #3a7ca5;
+            --ground-brown: #9a6a42;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-dark);
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+
+        .title-bar h1 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.5rem;
+            letter-spacing: 1px;
+        }
+
+        .title-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-dark);
+            border: 1px solid var(--border-dark);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .control-btn:hover { background: rgba(255, 255, 255, 0.2); }
+        .control-btn.green { background: var(--green); color: black; font-weight: 600; }
+        .control-btn.yellow { background: var(--yellow); color: black; font-weight: 600; }
+        .control-btn.blue { background: var(--blue); color: white; }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr 1fr; /* Left, Center, Right */
+            grid-template-rows: 50% 48%;
+            gap: 20px;
+            flex-grow: 1;
+            max-width: 1800px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--card-dark);
+            border: 1px solid var(--border-dark);
+            border-radius: 16px;
+            padding: 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-shrink: 0;
+        }
+
+        .card h2 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            opacity: 0.8;
+            text-transform: uppercase;
+        }
+        
+        .card-content {
+            flex-grow: 1;
+            position: relative;
+        }
+
+        .threeD-container, canvas, #gps-map {
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-radius: 8px;
+        }
+        
+        /* MODIFIED: AHRS (8-ball) specific styles */
+        .ahrs-container {
+            width: 100%;
+            padding-bottom: 100%; /* Maintain aspect ratio */
+            position: relative;
+            margin: auto;
+        }
+        .attitude-indicator-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 4px solid #4f4f4f;
+        }
+        .attitude-indicator {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transition: transform 0.1s linear;
+        }
+        .sky { width: 100%; height: 100%; background: var(--sky-blue); position: absolute; }
+        .ground { width: 100%; height: 100%; background: var(--ground-brown); position: absolute; top: 100%; }
+        .horizon-line { position: absolute; top: 0; left: -50%; width: 200%; height: 2px; background: white; }
+        .fixed-plane-symbol { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100px; height: auto; z-index: 10; }
+
+
+        /* Grid Placement */
+        #ahrs-container { grid-column: 1 / 2; grid-row: 1 / 2; }
+        #params-container { grid-column: 1 / 2; grid-row: 2 / 3; } /* Moved back to its own card */
+        #rocket-3d-container { grid-column: 2 / 3; grid-row: 1 / 3; }
+        #trajectory-container { grid-column: 3 / 4; grid-row: 1 / 2; }
+        #status-container { grid-column: 3 / 4; grid-row: 2 / 3; }
+        
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; height: 100%; }
+        .status-item { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 12px; }
+        .status-dot { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; }
+        .dot-green { background: var(--green); box-shadow: 0 0 10px var(--green); }
+        .dot-red { background: var(--red); }
+        .status-item span { font-size: 1rem; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="title-bar">
+        <h1>PROJECT NEAL TELEMETRY DASHBOARD</h1>
+        <div class="title-controls">
+            <button id="connect-btn" class="control-btn">CONNECT</button>
+            <button id="save-data-btn" class="control-btn blue">SAVE DATA</button>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <!-- Left Column -->
+        <div class="card" id="ahrs-container">
+            <div class="card-header"><h2>ATTITUDE INDICATOR</h2></div>
+            <div class="card-content ahrs-container">
+                <div class="attitude-indicator-wrapper">
+                    <div class="attitude-indicator" id="attitude-ball">
+                        <div class="sky"><div class="horizon-line"></div></div>
+                        <div class="ground"></div>
+                    </div>
+                    <svg class="fixed-plane-symbol" viewBox="0 0 100 40">
+                        <path d="M 50,20 L 60,20 L 70,25 L 70,20 L 95,20" stroke-width="3" stroke="yellow" fill="none" />
+                        <path d="M 50,20 L 40,20 L 30,25 L 30,20 L 5,20" stroke-width="3" stroke="yellow" fill="none" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+        <div class="card" id="params-container">
+            <div class="card-header"><h2>FLIGHT PARAMETERS</h2></div>
+            <div class="card-content">
+                 <p>Altitude: <span id="param-altitude">0.0</span> m</p>
+                 <p>Velocity: <span id="param-velocity">0.0</span> m/s</p>
+                 <p>Pressure: <span id="param-pressure">0</span> hPa</p>
+                 <p>Temperature: <span id="param-temp">0.0</span> &deg;C</p>
+            </div>
+        </div>
+
+        <!-- Center Column -->
+        <div class="card" id="rocket-3d-container">
+            <div class="card-header"><h2>3D ORIENTATION</h2></div>
+            <div class="card-content threeD-container" id="rocket-3d"></div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="card" id="trajectory-container">
+            <div class="card-header"><h2>GLOBAL TRAJECTORY</h2></div>
+            <div class="card-content" id="gps-map"></div>
+        </div>
+        <div class="card" id="status-container">
+            <div class="card-header"><h2>SYSTEM STATUS</h2></div>
+            <div class="card-content status-grid">
+                <div class="status-item"><div class="status-dot dot-red" id="mpu-dot"></div><span>MPU6050</span></div>
+                <div class="status-item"><div class="status-dot dot-red" id="bme-dot"></div><span>BME280</span></div>
+                <div class="status-item"><div class="status-dot dot-red" id="sd-dot"></div><span>SD CARD</span></div>
+                <div class="status-item"><div class="status-dot dot-red" id="lora-dot"></div><span>LORA LINK</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =================================================================
+        // INITIALIZATION
+        // =================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            init3D();
+            initMap();
+        });
+
+        // =================================================================
+        // 3D ROCKET VISUALIZATION (THREE.JS)
+        // =================================================================
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const container = document.getElementById('rocket-3d');
+        let rocket, nozzle;
+
+        function init3D() {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            renderer.setSize(width, height);
+            container.appendChild(renderer.domElement);
+
+            const rocketGroup = new THREE.Group();
+            const bodyGeo = new THREE.CylinderGeometry(0.15, 0.15, 2, 32);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            
+            const noseGeo = new THREE.ConeGeometry(0.15, 0.5, 32);
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0xff453a, metalness: 0.5, roughness: 0.3 });
+            const nose = new THREE.Mesh(noseGeo, noseMat);
+            nose.position.y = 1.25;
+
+            nozzle = new THREE.Group();
+            const nozzleGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.2, 32);
+            const nozzleMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.9, roughness: 0.4 });
+            const nozzleMesh = new THREE.Mesh(nozzleGeo, nozzleMat);
+            nozzle.add(nozzleMesh);
+            nozzle.position.y = -1.1;
+
+            rocketGroup.add(body);
+            rocketGroup.add(nose);
+            rocketGroup.add(nozzle);
+            rocket = rocketGroup;
+            scene.add(rocket);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            const gridHelper = new THREE.GridHelper(10, 20, 0x555555, 0x333333);
+            scene.add(gridHelper);
+
+            camera.position.set(2, 2, 3);
+            camera.lookAt(0, 0, 0);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            }
+            animate();
+            
+            window.addEventListener('resize', () => {
+                const w = container.clientWidth;
+                const h = container.clientHeight;
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+                renderer.setSize(w, h);
+            });
+        }
+
+        // =================================================================
+        // MAP AND DATA STATE
+        // =================================================================
+        let map, rocketMarker;
+        const initialCoords = [24.7255, 90.4103]; // Mymensingh-Dhaka Bypass
+        
+        function initMap() {
+            map = L.map('gps-map').setView(initialCoords, 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            rocketMarker = L.marker(initialCoords).addTo(map);
+        }
+
+        // =================================================================
+        // WEB SERIAL API & DATA HANDLING
+        // =================================================================
+        const connectBtn = document.getElementById('connect-btn');
+        let port, writer;
+        let lastDataTimestamp = 0;
+        let heartbeatInterval;
+
+        connectBtn.addEventListener('click', async () => {
+            if (port) {
+                try { 
+                    clearInterval(heartbeatInterval);
+                    await writer.close(); 
+                    await port.close(); 
+                } catch(e) {}
+                port = null; writer = null;
+                connectBtn.textContent = 'CONNECT';
+                connectBtn.classList.remove('green', 'yellow');
+                return;
+            }
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                writer = port.writable.getWriter();
+                connectBtn.textContent = 'CONNECTED';
+                connectBtn.classList.add('green');
+                lastDataTimestamp = Date.now();
+                
+                heartbeatInterval = setInterval(() => {
+                    if (Date.now() - lastDataTimestamp > 2000) {
+                        connectBtn.classList.remove('green');
+                        connectBtn.classList.add('yellow');
+                        connectBtn.textContent = 'NO SIGNAL';
+                    }
+                }, 1000);
+
+                readFromPort();
+            } catch (error) {
+                alert('Could not connect to serial port. Make sure you are using Chrome or Edge.');
+            }
+        });
+
+        async function readFromPort() {
+            const textDecoder = new TextDecoderStream();
+            port.readable.pipeTo(textDecoder.writable);
+            const reader = textDecoder.readable.getReader();
+            let lineBuffer = '';
+
+            while (port && port.readable) {
+                try {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    lineBuffer += value;
+                    let lines = lineBuffer.split('\r\n');
+                    lineBuffer = lines.pop();
+                    lines.forEach(processLine);
+                } catch (error) {
+                    console.error('Error reading from port:', error);
+                    break;
+                }
+            }
+             reader.releaseLock();
+        }
+        
+        const attitudeBall = document.getElementById('attitude-ball');
+        const PIXELS_PER_DEGREE_PITCH = 5; // Adjust for sensitivity
+
+        function processLine(line) {
+            if (!line) return;
+            
+            lastDataTimestamp = Date.now();
+            connectBtn.classList.remove('yellow');
+            connectBtn.classList.add('green');
+            connectBtn.textContent = 'CONNECTED';
+
+            document.getElementById('mpu-dot').className = 'status-dot dot-green';
+            document.getElementById('bme-dot').className = 'status-dot dot-green';
+            document.getElementById('lora-dot').className = 'status-dot dot-green';
+            document.getElementById('sd-dot').className = 'status-dot dot-green';
+
+            const values = line.trim().split(',');
+            if (values.length === 7) {
+                const [roll, pitch, altitude, temp, pressure, accel, velocity] = values.map(parseFloat);
+                
+                // Update 3D Model & AHRS
+                if (rocket) {
+                    rocket.rotation.x = THREE.MathUtils.degToRad(pitch);
+                    rocket.rotation.z = THREE.MathUtils.degToRad(-roll);
+                    nozzle.rotation.z = THREE.MathUtils.degToRad(roll * 2.5);
+                    nozzle.rotation.x = THREE.MathUtils.degToRad(-pitch * 2.5);
+                }
+                attitudeBall.style.transform = `translate(-50%, -50%) rotateZ(${-roll}deg) translateY(${pitch * PIXELS_PER_DEGREE_PITCH}px)`;
+
+                // Update Parameters
+                document.getElementById('param-roll').textContent = roll.toFixed(1);
+                document.getElementById('param-pitch').textContent = pitch.toFixed(1);
+                document.getElementById('param-altitude').textContent = altitude.toFixed(1);
+                document.getElementById('param-velocity').textContent = velocity.toFixed(1);
+                
+                // Simulate GPS movement
+                const randomLatOffset = (Math.random() - 0.5) * 0.0001;
+                const randomLngOffset = (Math.random() - 0.5) * 0.0001;
+                const newLatLng = [initialCoords[0] + randomLatOffset, initialCoords[1] + randomLngOffset];
+                rocketMarker.setLatLng(newLatLng);
+                map.panTo(newLatLng);
+            }
+        }
+    </script>
+</body>
+</html>
