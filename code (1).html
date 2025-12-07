@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Telemetry | Rocket Dashboard</title>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts for custom typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Console&family=Source+Code+Pro:wght@400;700&family=SF+Pro+Display:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Three.js for 3D visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Leaflet.js for interactive maps -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet CSS for map styling -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <style>
+        /* Root variables for theme management */
+        :root {
+            /* Light Mode Colors */
+            --bg-light: #f5f5f7;
+            --text-light: #1d1d1f;
+            --card-light: rgba(255, 255, 255, 0.85);
+            --border-light: rgba(0, 0, 0, 0.1);
+            
+            /* Dark Mode Colors */
+            --bg-dark: #1e1e1e;
+            --text-dark: #f5f5f7;
+            --card-dark: rgba(30, 30, 30, 0.75);
+            --border-dark: rgba(255, 255, 255, 0.1);
+            
+            /* Accent Colors */
+            --blue: #0a84ff;
+            --green: #30d158;
+            --orange: #ff9f0a;
+            --red: #ff453a;
+            --gray-text: rgba(255, 255, 255, 0.7); /* For secondary text in dark mode */
+        }
+
+        /* Base body styling */
+        body {
+            font-family: 'SF Pro Display', -apple-system, sans-serif;
+            background: var(--bg-dark); /* Use dark mode background by default */
+            color: var(--text-dark); /* Use dark mode text color by default */
+            margin: 0;
+            padding: 20px 40px;
+            min-height: 100vh;
+            box-sizing: border-box;
+            transition: background 0.5s ease, color 0.5s ease; /* Smooth theme transition */
+            overflow-y: auto; /* Allow scrolling if content exceeds viewport height */
+        }
+
+        /* Light mode specific body styling */
+        body[data-theme="light"] {
+            background: var(--bg-light);
+            color: var(--text-light);
+        }
+
+        /* Title Bar Styling */
+        .title-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-dark);
+            margin-bottom: 20px;
+            flex-wrap: wrap; /* Allow wrapping on smaller screens */
+        }
+
+        .title-bar h1 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.5rem;
+            color: var(--text-dark);
+        }
+
+        .title-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-dark); /* Ensure text is visible in dark mode */
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 20px;
+            border-radius: 12px;
+            font-family: 'SF Pro Display', sans-serif;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05),
+                        0 0 15px rgba(0, 0, 0, 0.1); /* Adjusted shadow for better dark mode contrast */
+            backdrop-filter: blur(10px);
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: scale(1.02);
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1),
+                        0 0 20px rgba(0, 0, 0, 0.3); /* Adjusted shadow */
+        }
+
+        .control-btn:active {
+            transform: translateY(0); /* Press effect */
+        }
+
+        .control-btn.red {
+            background: rgba(255, 65, 54, 0.25);
+            color: var(--red); /* Use red accent color */
+            border-color: rgba(255, 65, 54, 0.4);
+            box-shadow: 0 0 0 1px rgba(255, 65, 54, 0.1),
+                        0 0 15px rgba(255, 65, 54, 0.3);
+        }
+
+        .control-btn.red:hover {
+            background: rgba(255, 65, 54, 0.4);
+            box-shadow: 0 0 0 1px rgba(255, 65, 54, 0.2),
+                        0 0 20px rgba(255, 65, 54, 0.5);
+        }
+
+        /* Desktop Environment Layout */
+        .dashboard {
+            display: grid;
+            grid-template-rows: auto auto;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            height: calc(100vh - 160px); /* Adjust height based on title bar and padding */
+            min-height: 600px; /* Minimum height for dashboard */
+        }
+
+        .top-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            height: 40%; /* 40% of dashboard height */
+            min-height: 200px; /* Minimum height for top row */
+        }
+
+        .bottom-row {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr 1fr; /* Wider first column for 3D views */
+            gap: 20px;
+            height: 60%; /* 60% of dashboard height */
+            min-height: 300px; /* Minimum height for bottom row */
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 1200px) {
+            .top-row {
+                grid-template-columns: 1fr; /* Stack columns on smaller screens */
+                height: auto; /* Auto height for stacked layout */
+            }
+            .bottom-row {
+                grid-template-columns: 1fr; /* Stack columns */
+                height: auto;
+            }
+            .dashboard {
+                height: auto; /* Auto height for dashboard */
+                padding-bottom: 20px; /* Add some bottom padding */
+            }
+            body {
+                padding: 15px; /* Reduce padding on smaller screens */
+            }
+        }
+
+        @media (max-width: 768px) {
+            .title-bar {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .title-controls {
+                width: 100%;
+                justify-content: space-around;
+            }
+            .control-btn {
+                flex-grow: 1; /* Make buttons fill available space */
+            }
+        }
+
+        /* Card Styles */
+        .card {
+            background: var(--card-dark); /* Use dark mode card background */
+            border: 1px solid var(--border-dark); /* Use dark mode border */
+            border-radius: 18px;
+            padding: 20px;
+            backdrop-filter: blur(16px); /* Frosted glass effect */
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden; /* Hide overflow for content within card */
+        }
+
+        /* Light mode specific card styling */
+        body[data-theme="light"] .card {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-shrink: 0; /* Prevent header from shrinking */
+        }
+
+        .card h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .maximize-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dark);
+            opacity: 0.7;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            padding: 5px; /* Add padding for easier clicking */
+        }
+
+        .maximize-btn:hover {
+            opacity: 1;
+            transform: scale(1.1); /* Slight scale on hover */
+        }
+
+        /* 3D Views Container */
+        .orientation-container {
+            display: grid;
+            grid-template-columns: 1fr 2fr; /* Orientation view smaller than trajectory */
+            gap: 15px;
+            height: 100%;
+            flex-grow: 1; /* Allow container to fill remaining space */
+        }
+
+        @media (max-width: 992px) {
+            .orientation-container {
+                grid-template-columns: 1fr; /* Stack 3D views on medium screens */
+            }
+        }
+
+        /* 3D Views */
+        .threeD-container {
+            width: 100%;
+            height: 100%;
+            min-height: 200px; /* Ensure minimum height for 3D views */
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            background-color: rgba(0, 0, 0, 0.2); /* Dark background for 3D views */
+        }
+
+        .threeD-container h3 {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            margin: 0;
+            font-size: 0.9rem;
+            color: var(--gray-text); /* Lighter text for sub-headers */
+            z-index: 1; /* Ensure text is above canvas */
+        }
+
+        /* Fullscreen Overlay */
+        .fullscreen-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85); /* Darker background for fullscreen */
+            backdrop-filter: blur(8px); /* Stronger blur */
+            z-index: 1000; /* High z-index to cover everything */
+            display: none; /* Hidden by default */
+            justify-content: center;
+            align-items: center;
+            opacity: 0; /* Start with opacity 0 for fade-in */
+            transition: opacity 0.3s ease;
+        }
+
+        .fullscreen-overlay.active {
+            opacity: 1; /* Fade in */
+            display: flex; /* Show when active */
+        }
+
+        .fullscreen-content {
+            width: 95%; /* Slightly larger content area */
+            height: 95%;
+            position: relative;
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            background: transparent; /* Content background handled by individual views */
+        }
+
+        @media (max-width: 992px) {
+            .fullscreen-content {
+                grid-template-columns: 1fr; /* Stack views in fullscreen on smaller screens */
+                height: auto;
+                overflow-y: auto; /* Allow scrolling if content overflows */
+            }
+        }
+
+        .fullscreen-view {
+            background: var(--card-dark);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .fullscreen-view canvas {
+            width: 100% !important; /* Ensure canvas fills its container */
+            height: 100% !important;
+            display: block; /* Remove extra space below canvas */
+        }
+
+        .close-fullscreen {
+            position: absolute;
+            top: 20px; /* Slightly more padding from top */
+            right: 20px; /* Slightly more padding from right */
+            background: var(--red);
+            color: white;
+            border: none;
+            width: 40px; /* Larger button */
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 1010; /* Above fullscreen content */
+            font-size: 1.2rem;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .close-fullscreen:hover {
+            background: #ff5a45;
+            transform: scale(1.1);
+        }
+
+        /* Countdown Section */
+        .countdown-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            justify-content: space-between; /* Distribute space */
+        }
+
+        #countdown {
+            font-family: 'Console', monospace;
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin: auto; /* Center vertically */
+            text-align: center;
+            letter-spacing: -2px;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--blue); /* Highlight countdown */
+            text-shadow: 0 0 10px rgba(10, 132, 255, 0.5); /* Glow effect */
+        }
+
+        .launch-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: auto;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-dark); /* Separator */
+        }
+
+        .status-indicators {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap; /* Allow wrapping */
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.7rem;
+            color: var(--gray-text);
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-bottom: 4px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3); /* Subtle shadow for dots */
+        }
+
+        .dot-green { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .dot-red { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+        #launch-btn {
+            background: var(--red);
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 50px;
+            font-family: 'Source Code Pro', monospace;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(255, 69, 58, 0.4); /* Stronger shadow */
+        }
+
+        #launch-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px var(--red); /* More pronounced glow */
+        }
+
+        #launch-btn:active {
+            transform: scale(1);
+            box-shadow: 0 0 10px var(--red);
+        }
+
+        /* GPS Map */
+        #gps-map {
+            width: 100%;
+            height: 100%;
+            min-height: 150px;
+            border-radius: 12px;
+            flex-grow: 1; /* Allow map to fill space */
+            overflow: hidden; /* Ensure map content stays within border-radius */
+        }
+
+        /* Parameters Grid */
+        .param-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Two columns */
+            gap: 12px;
+            flex-grow: 1; /* Allow grid to fill space */
+            align-content: start; /* Align content to the top */
+        }
+
+        .param-card {
+            background: rgba(255, 255, 255, 0.05); /* Slightly transparent white */
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08); /* Subtle border */
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1); /* Inner shadow */
+        }
+
+        .param-card h3 {
+            margin: 0 0 4px 0;
+            font-size: 0.9rem;
+            opacity: 0.8;
+            font-weight: 500;
+            color: var(--gray-text);
+        }
+
+        .param-card p {
+            margin: 0;
+            font-size: 1.1rem; /* Adjusted for better fit */
+            font-weight: 600;
+            color: var(--text-dark);
+            white-space: nowrap; /* Prevent wrapping */
+            overflow: hidden; /* Hide overflow */
+            text-overflow: ellipsis; /* Show ellipsis for overflow */
+        }
+
+        .param-card span {
+            font-size: 0.8rem; /* Adjusted for better fit */
+            opacity: 0.8;
+            color: var(--gray-text);
+        }
+    </style>
+</head>
+<body>
+    <!-- Title Bar Section -->
+    <div class="title-bar">
+        <h1>SYSTEM TELEMETRY</h1>
+        <div class="title-controls">
+            <button id="connect-btn" class="control-btn">CONNECT</button>
+            <button id="pause-btn" class="control-btn red">PAUSE</button>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Layout -->
+    <div class="dashboard">
+        <!-- Top Row of Cards -->
+        <div class="top-row">
+            <!-- Altitude Chart Card -->
+            <div class="card">
+                <h2>ALTITUDE</h2>
+                <div style="flex: 1; display: flex; justify-content: center; align-items: center;">
+                    <canvas id="altitude-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- GPS Coordinates Card -->
+            <div class="card">
+                <h2>GPS COORDINATES</h2>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0;">
+                    <div style="flex: 1;">
+                        <p style="margin: 0; font-size: 0.9rem; opacity: 0.8; color: var(--gray-text);">LATITUDE</p>
+                        <p id="latitude" style="margin: 0; font-size: 1.2rem; font-weight: 600;">24.7466° N</p>
+                    </div>
+                    <div style="flex: 1;">
+                        <p style="margin: 0; font-size: 0.9rem; opacity: 0.8; color: var(--gray-text);">LONGITUDE</p>
+                        <p id="longitude" style="margin: 0; font-size: 1.2rem; font-weight: 600;">90.4040° E</p>
+                    </div>
+                </div>
+                <div style="flex: 1; min-height: 150px;">
+                    <div id="gps-map"></div>
+                </div>
+            </div>
+
+            <!-- Velocity Chart Card -->
+            <div class="card">
+                <h2>VELOCITY</h2>
+                <div style="flex: 1; display: flex; justify-content: center; align-items: center;">
+                    <canvas id="velocity-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Row of Cards -->
+        <div class="bottom-row">
+            <!-- 3D Visualization Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>3D VISUALIZATION</h2>
+                    <button class="maximize-btn" onclick="toggleFullscreen()">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                </div>
+                <div class="orientation-container">
+                    <div>
+                        <h3 style="margin-top: 0; font-size: 0.9rem;">ORIENTATION</h3>
+                        <div id="rocket-3d" class="threeD-container"></div>
+                    </div>
+                    <div>
+                        <h3 style="margin-top: 0; font-size: 0.9rem;">TRAJECTORY</h3>
+                        <div id="trajectory-graph" class="threeD-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Countdown Card -->
+            <div class="card countdown-container">
+                <h2>COUNTDOWN</h2>
+                <p id="countdown">T-00:05:00</p>
+                <div class="launch-controls">
+                    <div class="status-indicators">
+                        <div class="status-item">
+                            <div class="status-dot dot-green" id="gyro-dot"></div>
+                            <span>GYRO</span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-dot dot-green" id="baro-dot"></div>
+                            <span>BARO</span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-dot dot-green" id="gps-dot"></div>
+                            <span>GPS</span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-dot dot-green" id="sdcard-dot"></div>
+                            <span>SD CARD</span>
+                        </div>
+                    </div>
+                    <button id="launch-btn">LAUNCH</button>
+                </div>
+            </div>
+
+            <!-- Flight Parameters Card -->
+            <div class="card">
+                <h2>FLIGHT PARAMETERS</h2>
+                <div class="param-grid">
+                    <div class="param-card">
+                        <h3>ALTITUDE</h3>
+                        <p id="altitude-value">0 <span>m</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>VELOCITY</h3>
+                        <p id="velocity-value">0 <span>m/s</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>ACCELERATION</h3>
+                        <p id="acceleration-value">0 <span>G</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>TEMPERATURE</h3>
+                        <p id="temperature-value">25 <span>°C</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>BATTERY</h3>
+                        <p id="battery-value">12.6 <span>V</span></p>
+                    </div>
+                    <div class="param-card">
+                        <h3>THRUST</h3>
+                        <p id="thrust-value">0 <span>N</span></p>
+                    </div>
+                    <!-- New: Apogee Parameter -->
+                    <div class="param-card">
+                        <h3>APOGEE</h3>
+                        <p id="apogee-value">0 <span>m</span></p>
+                    </div>
+                    <!-- New: Maximum Velocity Parameter -->
+                    <div class="param-card">
+                        <h3>MAX VELOCITY</h3>
+                        <p id="max-velocity-value">0 <span>m/s</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Overlay for 3D Views -->
+    <div class="fullscreen-overlay" id="fullscreen-overlay">
+        <button class="close-fullscreen" onclick="closeFullscreen()">
+            <i class="fas fa-times"></i>
+        </button>
+        <div class="fullscreen-content" id="fullscreen-content">
+            <div class="fullscreen-view" id="fs-orientation">
+                <h3 style="position: absolute; top: 10px; left: 10px; margin: 0; color: white;">ORIENTATION</h3>
+                <canvas id="fs-orientation-canvas"></canvas>
+            </div>
+            <div class="fullscreen-view" id="fs-trajectory">
+                <h3 style="position: absolute; top: 10px; left: 10px; margin: 0; color: white;">TRAJECTORY</h3>
+                <canvas id="fs-trajectory-canvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ====================================================================
+        // GLOBAL SIMULATION STATE VARIABLES
+        // ====================================================================
+        let isPaused = false; // Controls simulation pause/resume
+        let isLaunching = false; // True when a launch sequence is active
+        let isFreeFalling = false; // True when rocket is in free fall phase
+        let launchTime = 0; // Timestamp of launch start (not used in current time-based sim)
+        let currentTime = 0; // Current simulation time in seconds
+        let simulationInterval; // Stores the interval ID for simulation updates
+        let maxAltitudeReached = 0; // Tracks the highest altitude achieved (Apogee)
+        let maxVelocityReached = 0; // Tracks the highest absolute velocity achieved
+
+        // Rocket flight parameters and physics constants
+        const flightParams = {
+            maxAltitude: 59.8, // meters - Peak altitude for simulation
+            maxVelocity: 31.5, // m/s - Max velocity during boost phase
+            maxAcceleration: 35.4, // m/s² - Max acceleration during boost
+            burnoutTime: 1.8, // seconds - Duration of powered flight
+            coastTime: 3.5, // seconds - Time until apogee (after burnout)
+            totalFlightTime: 8.0, // seconds - End of controlled flight/peak altitude simulation
+            freeFallDuration: 10.0, // seconds - How long free fall is simulated after totalFlightTime
+            gravity: 9.81, // m/s² - Standard gravity
+            dragCoefficient: 0.2, // Simplified drag coefficient
+            rocketMass: 1.5 // kg - Mass of the rocket
+        };
+
+        // ====================================================================
+        // 3D ROCKET VISUALIZATION SETUP (THREE.JS)
+        // ====================================================================
+
+        // --- Orientation View Setup ---
+        const rocketScene = new THREE.Scene();
+        const rocketCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000); // FOV, Aspect, Near, Far
+        const rocketRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); // Alpha for transparent background
+        const rocketContainer = document.getElementById('rocket-3d');
+        
+        // Set renderer size and append to DOM
+        rocketRenderer.setSize(rocketContainer.clientWidth, rocketContainer.clientHeight);
+        rocketContainer.appendChild(rocketRenderer.domElement);
+        
+        // Create a simple rocket model (Cylinder)
+        const rocketGeometry = new THREE.CylinderGeometry(0.3, 0.1, 1.5, 32); // Top radius, bottom radius, height, segments
+        const rocketMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red color
+        const rocket = new THREE.Mesh(rocketGeometry, rocketMaterial);
+        rocketScene.add(rocket);
+        
+        // Add a grid helper for visual reference
+        const gridHelper = new THREE.GridHelper(10, 10, 0x555555, 0x333333); // Size, divisions, center color, grid color
+        rocketScene.add(gridHelper);
+        
+        // Add axes helper (X: red, Y: green, Z: blue)
+        const axesHelper = new THREE.AxesHelper(3); // Size
+        rocketScene.add(axesHelper);
+        
+        // Position camera to look down at the rocket
+        rocketCamera.position.set(3, 5, 5);
+        rocketCamera.lookAt(0, 0, 0); // Point camera at the origin
+
+        // --- Trajectory View Setup ---
+        const trajectoryScene = new THREE.Scene();
+        const trajectoryCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+        const trajectoryRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const trajectoryContainer = document.getElementById('trajectory-graph');
+        
+        // Set renderer size and append to DOM
+        trajectoryRenderer.setSize(trajectoryContainer.clientWidth, trajectoryContainer.clientHeight);
+        trajectoryContainer.appendChild(trajectoryRenderer.domElement);
+        
+        // Create trajectory line (initially empty)
+        const trajectoryPoints = []; // Array to store THREE.Vector3 points
+        const trajectoryGeometry = new THREE.BufferGeometry();
+        const trajectoryMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 }); // Green line
+        const trajectoryLine = new THREE.Line(trajectoryGeometry, trajectoryMaterial);
+        trajectoryScene.add(trajectoryLine);
+        
+        // Add a grid to the trajectory view
+        const trajectoryGrid = new THREE.GridHelper(20, 20, 0x555555, 0x333333);
+        trajectoryScene.add(trajectoryGrid);
+        
+        // Position trajectory camera
+        trajectoryCamera.position.set(5, 10, 5);
+        trajectoryCamera.lookAt(0, 0, 0);
+
+        // Fullscreen renderers (initialized when fullscreen is activated)
+        let fsOrientationRenderer, fsTrajectoryRenderer;
+
+        // ====================================================================
+        // PHYSICS SIMULATION LOGIC
+        // ====================================================================
+        let lastAltitude = 0; // Stores altitude at the end of controlled flight
+        let lastVelocity = 0; // Stores velocity at the end of controlled flight
+        let lastX = 0; // Stores last X position for trajectory before free fall
+        let lastZ = 0; // Stores last Z position for trajectory before free fall
+
+        /**
+         * Calculates rocket flight parameters (altitude, velocity, acceleration, thrust)
+         * based on the current simulation time. This is a simplified physics model.
+         * @param {number} t - Current simulation time in seconds.
+         * @returns {object} - Object containing calculated parameters.
+         */
+        function calculateFlightParameters(t) {
+            let altitude = 0;
+            let velocity = 0;
+            let acceleration = 0;
+            let thrust = 0;
+            
+            if (t < flightParams.burnoutTime) {
+                // --- Boost Phase (Powered Ascent) ---
+                // Rocket is actively thrusting. Acceleration and thrust decrease linearly.
+                const tNorm = t / flightParams.burnoutTime; // Normalized time (0 to 1)
+                thrust = 1000 * (1 - tNorm); // Max thrust at t=0, decreases to 0 at burnout
+                acceleration = flightParams.maxAcceleration * (1 - tNorm * 0.5); // Acceleration decreases slightly
+                velocity = flightParams.maxVelocity * tNorm; // Velocity increases linearly to maxVelocity
+                altitude = 0.5 * acceleration * t * t; // Basic kinematic equation for altitude
+            } else if (t < flightParams.coastTime) {
+                // --- Coast Phase (Ballistic Ascent) ---
+                // Thrust is zero. Rocket continues upwards due to inertia, decelerating due to gravity and drag.
+                const coastT = t - flightParams.burnoutTime; // Time elapsed since burnout
+                thrust = 0;
+                
+                // Simplified drag force calculation (Fd = 0.5 * ρ * v² * Cd * A)
+                const airDensity = 1.225; // kg/m³ (standard at sea level)
+                const crossArea = 0.01; // m² (approximate cross-sectional area of rocket)
+                const currentVelocityForDrag = Math.max(0, flightParams.maxVelocity + (-flightParams.gravity * coastT)); // Estimate velocity for drag
+                const dragForce = 0.5 * airDensity * Math.pow(currentVelocityForDrag, 2) * 
+                                 flightParams.dragCoefficient * crossArea;
+                
+                acceleration = -flightParams.gravity - (dragForce / flightParams.rocketMass); // Gravity + drag deceleration
+                velocity = flightParams.maxVelocity + acceleration * coastT; // Velocity decreases
+                
+                // Calculate altitude based on previous phase's end altitude and current phase's kinematics
+                const altitudeAtBurnout = (0.5 * flightParams.maxAcceleration * Math.pow(flightParams.burnoutTime, 2));
+                altitude = altitudeAtBurnout + 
+                          (flightParams.maxVelocity * coastT) + 
+                          (0.5 * acceleration * Math.pow(coastT, 2));
+            } else if (t < flightParams.totalFlightTime) {
+                // --- Initial Descent Phase (before full free fall) ---
+                // Rocket starts descending. Velocity becomes negative.
+                const descentT = t - flightParams.coastTime; // Time elapsed since start of descent
+                thrust = 0;
+                
+                // Simplified approach to terminal velocity
+                const airDensity = 1.225;
+                const crossArea = 0.01;
+                const terminalVelocity = Math.sqrt((2 * flightParams.rocketMass * flightParams.gravity) / 
+                                        (airDensity * flightParams.dragCoefficient * crossArea));
+                
+                // Velocity approaches terminal velocity exponentially
+                velocity = -terminalVelocity * (1 - Math.exp(-descentT * 0.5));
+                
+                // Acceleration approaches zero as terminal velocity is reached
+                acceleration = -flightParams.gravity * Math.exp(-descentT * 0.3);
+                
+                // Altitude decreases exponentially from maxAltitude
+                altitude = flightParams.maxAltitude * Math.exp(-descentT * 0.5);
+
+                // Store values at the end of this main flight phase for smooth transition to free fall
+                if (t >= flightParams.totalFlightTime - 0.1 && t <= flightParams.totalFlightTime + 0.1) {
+                    lastAltitude = altitude;
+                    lastVelocity = velocity;
+                }
+
+            } else {
+                // --- Free Fall Phase (after totalFlightTime) ---
+                // Rocket is assumed to be in uncontrolled free fall until impact.
+                isFreeFalling = true;
+                const freeFallT = t - flightParams.totalFlightTime; // Time elapsed since start of free fall
+                thrust = 0;
+                
+                // Simple free fall kinematics starting from `lastAltitude` and `lastVelocity`
+                velocity = lastVelocity - (flightParams.gravity * freeFallT);
+                altitude = lastAltitude + (lastVelocity * freeFallT) - (0.5 * flightParams.gravity * freeFallT * freeFallT);
+                acceleration = -flightParams.gravity; // Constant gravity during free fall
+                
+                // Ensure altitude does not go below zero (ground impact)
+                if (altitude < 0) {
+                    altitude = 0;
+                    velocity = 0;
+                    acceleration = 0;
+                    // Optionally, stop simulation here if desired
+                }
+            }
+            
+            // Add some minor random noise for a more "live" data feel
+            altitude += (Math.random() - 0.5) * 0.2; // +/- 0.1m
+            velocity += (Math.random() - 0.5) * 0.1; // +/- 0.05 m/s
+            acceleration += (Math.random() - 0.5) * 0.5; // +/- 0.25 G
+            
+            // Return calculated parameters, ensuring altitude and thrust are non-negative
+            return {
+                altitude: Math.max(0, altitude),
+                velocity: velocity,
+                acceleration: acceleration,
+                thrust: Math.max(0, thrust)
+            };
+        }
+
+        /**
+         * Updates the 3D rocket's orientation based on simulation time and phase.
+         * @param {number} t - Current simulation time in seconds.
+         */
+        function updateRocketOrientation(t) {
+            if (isFreeFalling) {
+                // Continuous tumble during free fall for visual effect
+                const freeFallT = t - flightParams.totalFlightTime;
+                const tumbleSpeed = 0.5 + (freeFallT * 0.1); // Tumble speed increases over time
+                
+                rocket.rotation.x += tumbleSpeed * 0.05;
+                rocket.rotation.y += tumbleSpeed * 0.07;
+                rocket.rotation.z += tumbleSpeed * 0.03;
+
+            } else if (t < flightParams.burnoutTime) {
+                // Small vibrations during powered launch
+                rocket.rotation.x = Math.sin(t * 20) * 0.05;
+                rocket.rotation.y = Math.cos(t * 18) * 0.05;
+                rocket.rotation.z = Math.sin(t * 15) * 0.03;
+            } else if (t < flightParams.coastTime) {
+                // Stabilize during coast phase
+                rocket.rotation.x = 0;
+                rocket.rotation.y = 0;
+                rocket.rotation.z = 0;
+            } else {
+                // Introduce some tumbling during initial descent (before full free fall)
+                const descentT = t - flightParams.coastTime;
+                const tumbleRate = 0.5 * (1 - Math.exp(-descentT * 0.5)); // Tumble rate increases then stabilizes
+                
+                rocket.rotation.x = tumbleRate * Math.sin(descentT * 2);
+                rocket.rotation.y = tumbleRate * Math.cos(descentT * 2.3);
+                rocket.rotation.z = tumbleRate * Math.sin(descentT * 1.7);
+            }
+        }
+
+        /**
+         * Updates the 3D trajectory line with new points.
+         * @param {number} t - Current simulation time in seconds.
+         * @param {object} params - Current flight parameters (including altitude).
+         */
+        function updateTrajectory(t, params) {
+            let x, z;
+
+            if (isFreeFalling) {
+                // During free fall, maintain last horizontal position or slight drift
+                x = lastX + (Math.sin(t * 0.1) * 0.05); // Slight horizontal drift
+                z = lastZ + (Math.cos(t * 0.1) * 0.05); // Slight horizontal drift
+            } else {
+                // Normal flight trajectory (simple spiral for visual interest)
+                x = Math.sin(t * 0.5) * (t * 0.5); // X position grows with time
+                z = Math.cos(t * 0.5) * (t * 0.5); // Z position grows with time
+                
+                // Store last x and z before free fall for continuity
+                if (t >= flightParams.totalFlightTime - 0.1 && t <= flightParams.totalFlightTime + 0.1) {
+                    lastX = x;
+                    lastZ = z;
+                }
+            }
+            
+            const y = params.altitude / 10; // Scale down altitude for better visualization in 3D space
+            
+            // Add new point to trajectory
+            trajectoryPoints.push(new THREE.Vector3(x, y, z));
+            
+            // Limit the number of points to keep the line manageable and performant
+            const maxPoints = 200; // Increased points for longer visible trail
+            if (trajectoryPoints.length > maxPoints) {
+                trajectoryPoints.shift(); // Remove the oldest point
+            }
+            
+            // Update the geometry of the trajectory line
+            trajectoryGeometry.setFromPoints(trajectoryPoints);
+            trajectoryGeometry.attributes.position.needsUpdate = true; // Inform Three.js to update buffer
+        }
+
+        /**
+         * Updates the Altitude and Velocity charts with new data points.
+         * @param {number} t - Current simulation time in seconds.
+         * @param {object} params - Current flight parameters.
+         */
+        function updateCharts(t, params) {
+            // Update altitude chart
+            altitudeChart.data.labels.push(''); // Original design used empty labels
+            altitudeChart.data.datasets[0].data.push(params.altitude);
+            const chartHistoryLength = 20; // Reverted to original history length
+            if (altitudeChart.data.labels.length > chartHistoryLength) {
+                altitudeChart.data.labels.shift();
+                altitudeChart.data.datasets[0].data.shift();
+            }
+            altitudeChart.update('none'); // 'none' for no animation, faster update
+
+            // Update velocity chart
+            velocityChart.data.labels.push(''); // Original design used empty labels
+            velocityChart.data.datasets[0].data.push(params.velocity);
+            if (velocityChart.data.labels.length > chartHistoryLength) {
+                velocityChart.data.labels.shift();
+                velocityChart.data.datasets[0].data.shift();
+            }
+            velocityChart.update('none'); // 'none' for no animation, faster update
+        }
+
+        /**
+         * Updates the numerical flight parameters displayed in the UI.
+         * Also updates Apogee and Max Velocity.
+         * @param {object} params - Current flight parameters.
+         */
+        function updateFlightParameters(params) {
+            document.getElementById('altitude-value').innerHTML = `${params.altitude.toFixed(1)} <span>m</span>`;
+            document.getElementById('velocity-value').innerHTML = `${Math.abs(params.velocity).toFixed(1)} <span>m/s</span>`;
+            document.getElementById('acceleration-value').innerHTML = `${(params.acceleration / flightParams.gravity).toFixed(1)} <span>G</span>`; // Convert m/s² to G's
+            document.getElementById('thrust-value').innerHTML = `${params.thrust.toFixed(0)} <span>N</span>`;
+            
+            // Update Apogee (maximum altitude reached)
+            if (params.altitude > maxAltitudeReached) {
+                maxAltitudeReached = params.altitude;
+            }
+            document.getElementById('apogee-value').innerHTML = `${maxAltitudeReached.toFixed(1)} <span>m</span>`;
+
+            // Update Maximum Velocity (absolute value)
+            if (Math.abs(params.velocity) > maxVelocityReached) {
+                maxVelocityReached = Math.abs(params.velocity);
+            }
+            document.getElementById('max-velocity-value').innerHTML = `${maxVelocityReached.toFixed(1)} <span>m/s</span>`;
+
+            // Update GPS coordinates (simulated drift based on altitude)
+            const lat = 24.7466 + (params.altitude / 500000); // Small latitude change
+            const lng = 90.4040 + (params.altitude / 500000); // Small longitude change
+            document.getElementById('latitude').textContent = `${lat.toFixed(4)}° N`;
+            document.getElementById('longitude').textContent = `${lng.toFixed(4)}° E`;
+            rocketMarker.setLatLng([lat, lng]); // Update Leaflet marker position
+            
+            // Simulate temperature change (heating during ascent, cooling during descent/free fall)
+            let temp;
+            if (isFreeFalling) {
+                temp = 40 - (currentTime - flightParams.totalFlightTime) * 2; // Cool down after peak
+                if (temp < 25) temp = 25; // Don't go below ambient
+            } else {
+                temp = 25 + (params.altitude / flightParams.maxAltitude) * 15; // Heat up with altitude
+            }
+            document.getElementById('temperature-value').innerHTML = `${temp.toFixed(1)} <span>°C</span>`;
+            
+            // Simulate battery drain
+            const batteryDrainFactor = 0.5; // Total voltage drop over full simulation
+            const totalSimTime = flightParams.totalFlightTime + flightParams.freeFallDuration;
+            const battery = 12.6 - (currentTime / totalSimTime) * batteryDrainFactor;
+            document.getElementById('battery-value').innerHTML = `${Math.max(0, battery).toFixed(2)} <span>V</span>`; // Ensure non-negative
+        }
+
+        /**
+         * Main simulation loop function. Called repeatedly by setInterval.
+         */
+        function runSimulation() {
+            if (isPaused) return; // Do nothing if simulation is paused
+            
+            currentTime += 0.1; // Advance simulation time by 0.1 seconds
+            const params = calculateFlightParameters(currentTime); // Get current physics parameters
+            
+            // Update all dashboard components
+            updateRocketOrientation(currentTime);
+            updateTrajectory(currentTime, params);
+            updateCharts(currentTime, params);
+            updateFlightParameters(params);
+            
+            // Check if the entire simulation (flight + free fall) has ended
+            if (currentTime >= flightParams.totalFlightTime + flightParams.freeFallDuration) {
+                clearInterval(simulationInterval); // Stop the simulation interval
+                isLaunching = false; // Reset launch state
+                isFreeFalling = false; // Reset free fall state
+                document.getElementById('launch-btn').textContent = "RESET"; // Change button text
+                
+                // Ensure final values are zeroed out or reset to initial state
+                document.getElementById('altitude-value').innerHTML = `0.0 <span>m</span>`;
+                document.getElementById('velocity-value').innerHTML = `0.0 <span>m/s</span>`;
+                document.getElementById('acceleration-value').innerHTML = `0.0 <span>G</span>`;
+                document.getElementById('thrust-value').innerHTML = `0 <span>N</span>`;
+                rocketMarker.setLatLng([24.7466, 90.4040]); // Reset GPS marker to origin
+            }
+        }
+
+        /**
+         * Initiates the countdown sequence before launch.
+         */
+        function startCountdown() {
+            let countdown = 5; // Start countdown from 5 seconds
+            document.getElementById('countdown').textContent = `T-00:0${countdown}:00`;
+            
+            const countdownInterval = setInterval(() => {
+                if (isPaused) return; // Pause countdown if simulation is paused
+                
+                countdown--;
+                document.getElementById('countdown').textContent = `T-00:0${countdown}:00`;
+                
+                if (countdown <= 0) {
+                    clearInterval(countdownInterval); // Stop countdown
+                    document.getElementById('countdown').textContent = "IGNITION!";
+                    setTimeout(() => {
+                        document.getElementById('countdown').textContent = "LIFTOFF!";
+                        startLaunch(); // Begin the actual launch simulation
+                    }, 1000); // Display LIFTOFF for 1 second before starting simulation
+                }
+            }, 1000); // Update every 1 second
+        }
+
+        /**
+         * Starts the main rocket launch simulation.
+         */
+        function startLaunch() {
+            isLaunching = true; // Set launch flag
+            isFreeFalling = false; // Ensure free fall is false at launch start
+            currentTime = 0; // Reset simulation time
+            
+            // Reset stored values for new simulation run
+            lastAltitude = 0;
+            lastVelocity = 0;
+            lastX = 0;
+            lastZ = 0;
+            maxAltitudeReached = 0; // Reset apogee for new launch
+            maxVelocityReached = 0; // Reset max velocity for new launch
+            
+            // Clear previous trajectory points
+            trajectoryPoints.length = 0;
+            trajectoryGeometry.setFromPoints(trajectoryPoints);
+            
+            // Reset charts to empty state
+            const chartHistoryLength = 20; // Consistent with updateCharts
+            altitudeChart.data.labels = Array(chartHistoryLength).fill('');
+            altitudeChart.data.datasets[0].data = Array(chartHistoryLength).fill(0);
+            altitudeChart.update('none');
+            
+            velocityChart.data.labels = Array(chartHistoryLength).fill('');
+            velocityChart.data.datasets[0].data = Array(chartHistoryLength).fill(0);
+            velocityChart.update('none');
+            
+            // Start the main simulation loop
+            simulationInterval = setInterval(runSimulation, 100); // Update every 100ms (10 times per second)
+        }
+
+        /**
+         * Resets the entire simulation to its initial state.
+         */
+        function resetSimulation() {
+            clearInterval(simulationInterval); // Stop any active simulation
+            isLaunching = false;
+            isFreeFalling = false;
+            currentTime = 0;
+            
+            // Reset all stored physics values
+            lastAltitude = 0;
+            lastVelocity = 0;
+            lastX = 0;
+            lastZ = 0;
+            maxAltitudeReached = 0;
+            maxVelocityReached = 0;
+            
+            // Reset rocket 3D orientation
+            rocket.rotation.set(0, 0, 0);
+            
+            // Clear trajectory line
+            trajectoryPoints.length = 0;
+            trajectoryGeometry.setFromPoints(trajectoryPoints);
+            trajectoryGeometry.attributes.position.needsUpdate = true;
+            
+            // Reset all displayed parameters to initial values
+            document.getElementById('altitude-value').innerHTML = `0 <span>m</span>`;
+            document.getElementById('velocity-value').innerHTML = `0 <span>m/s</span>`;
+            document.getElementById('acceleration-value').innerHTML = `0 <span>G</span>`;
+            document.getElementById('thrust-value').innerHTML = `0 <span>N</span>`;
+            document.getElementById('temperature-value').innerHTML = `25 <span>°C</span>`;
+            document.getElementById('battery-value').innerHTML = `12.6 <span>V</span>`;
+            document.getElementById('apogee-value').innerHTML = `0 <span>m</span>`;
+            document.getElementById('max-velocity-value').innerHTML = `0 <span>m/s</span>`;
+            
+            // Reset GPS coordinates and marker
+            document.getElementById('latitude').textContent = `24.7466° N`;
+            document.getElementById('longitude').textContent = `90.4040° E`;
+            rocketMarker.setLatLng([24.7466, 90.4040]);
+            
+            // Reset countdown display and launch button text
+            document.getElementById('countdown').textContent = "T-00:05:00";
+            document.getElementById('launch-btn').textContent = "LAUNCH";
+
+            // Clear charts
+            const chartHistoryLength = 20;
+            altitudeChart.data.labels = Array(chartHistoryLength).fill('');
+            altitudeChart.data.datasets[0].data = Array(chartHistoryLength).fill(0);
+            altitudeChart.update('none');
+            
+            velocityChart.data.labels = Array(chartHistoryLength).fill('');
+            velocityChart.data.datasets[0].data = Array(chartHistoryLength).fill(0);
+            velocityChart.update('none');
+        }
+
+        // ====================================================================
+        // FULLSCREEN FUNCTIONALITY FOR 3D VIEWS
+        // ====================================================================
+
+        /**
+         * Toggles the fullscreen overlay for 3D visualizations.
+         */
+        function toggleFullscreen() {
+            const overlay = document.getElementById('fullscreen-overlay');
+            overlay.classList.add('active'); // Add active class for fade-in
+            document.body.style.overflow = 'hidden'; // Prevent body scrolling
+
+            // Initialize fullscreen renderers if they don't exist or are not attached
+            const fsOrientationCanvas = document.getElementById('fs-orientation-canvas');
+            const fsTrajectoryCanvas = document.getElementById('fs-trajectory-canvas');
+
+            if (!fsOrientationRenderer) {
+                fsOrientationRenderer = new THREE.WebGLRenderer({
+                    antialias: true,
+                    canvas: fsOrientationCanvas,
+                    alpha: true
+                });
+            }
+            if (!fsTrajectoryRenderer) {
+                fsTrajectoryRenderer = new THREE.WebGLRenderer({
+                    antialias: true,
+                    canvas: fsTrajectoryCanvas,
+                    alpha: true
+                });
+            }
+
+            // Ensure renderers are correctly sized for fullscreen views
+            const updateFullscreenRendererSizes = () => {
+                const orientationDiv = document.getElementById('fs-orientation');
+                const trajectoryDiv = document.getElementById('fs-trajectory');
+                if (orientationDiv && trajectoryDiv) {
+                    fsOrientationRenderer.setSize(orientationDiv.clientWidth, orientationDiv.clientHeight);
+                    // Set camera aspect ratio based on the new size
+                    rocketCamera.aspect = orientationDiv.clientWidth / orientationDiv.clientHeight;
+                    rocketCamera.updateProjectionMatrix();
+
+                    fsTrajectoryRenderer.setSize(trajectoryDiv.clientWidth, trajectoryDiv.clientHeight);
+                    // Set camera aspect ratio based on the new size
+                    trajectoryCamera.aspect = trajectoryDiv.clientWidth / trajectoryDiv.clientHeight;
+                    trajectoryCamera.updateProjectionMatrix();
+                }
+            };
+
+            // Initial size update
+            updateFullscreenRendererSizes();
+            // Add resize listener for responsiveness in fullscreen
+            window.addEventListener('resize', updateFullscreenRendererSizes);
+            overlay.dataset.resizeListenerAdded = 'true'; // Mark that listener is added
+            
+            // Start fullscreen animation loop
+            function animateFullscreen() {
+                if (overlay.classList.contains('active')) { // Only animate if overlay is active
+                    requestAnimationFrame(animateFullscreen);
+                    fsOrientationRenderer.render(rocketScene, rocketCamera);
+                    fsTrajectoryRenderer.render(trajectoryScene, trajectoryCamera);
+                }
+            }
+            animateFullscreen();
+        }
+
+        /**
+         * Closes the fullscreen overlay.
+         */
+        function closeFullscreen() {
+            const overlay = document.getElementById('fullscreen-overlay');
+            overlay.classList.remove('active'); // Remove active class for fade-out
+            document.body.style.overflow = ''; // Restore body scrolling
+
+            // Remove resize listener to prevent memory leaks
+            if (overlay.dataset.resizeListenerAdded === 'true') {
+                window.removeEventListener('resize', updateFullscreenRendererSizes);
+                overlay.dataset.resizeListenerAdded = 'false';
+            }
+        }
+
+        // ====================================================================
+        // GPS MAP INTEGRATION (LEAFLET.JS)
+        // ====================================================================
+
+        // Initialize the map with a view centered on Mymensingh Engineering College
+        const map = L.map('gps-map').setView([24.7466, 90.4040], 17); // Lat, Lng, Zoom level
+
+        // Add a dark mode tile layer (CartoDB DarkMatter)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CartoDB</a>',
+            subdomains: 'abcd', // Required for CartoDB tiles
+            maxZoom: 19,
+            minZoom: 2 // Allow zooming out
+        }).addTo(map);
+        
+        // Add a marker for the rocket's initial position
+        const rocketMarker = L.marker([24.7466, 90.4040]).addTo(map)
+            .bindPopup("Mymensingh Engineering College") // Popup text
+            .openPopup(); // Open popup by default
+
+        // ====================================================================
+        // CHART.JS CONFIGURATION
+        // ====================================================================
+
+        // --- Altitude Chart ---
+        const altitudeCtx = document.getElementById('altitude-chart').getContext('2d');
+        const altitudeChart = new Chart(altitudeCtx, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''), // Reverted to original 20 points
+                datasets: [{
+                    data: Array(20).fill(0), // Reverted to original 20 points
+                    borderColor: '#0a84ff', // Original blue color
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    backgroundColor: 'rgba(10, 132, 255, 0.1)' // Original fill color
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return `Altitude: ${context.parsed.y.toFixed(2)} m`;
+                            }
+                        },
+                        // Fix tooltip text color for dark theme
+                        backgroundColor: 'rgba(30, 30, 30, 0.9)', // Dark background for tooltip
+                        titleColor: 'var(--text-dark)', // White title
+                        bodyColor: 'var(--text-dark)', // White body text
+                        borderColor: 'var(--border-dark)',
+                        borderWidth: 1,
+                        cornerRadius: 4,
+                        displayColors: false
+                    }
+                },
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Altitude (m)',
+                            color: 'var(--gray-text)' // White text for axis title
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: 'var(--text-dark)' // White text for ticks
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time (s)',
+                            color: 'var(--gray-text)' // White text for axis title
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: 'var(--text-dark)', // White text for ticks
+                            maxRotation: 0,
+                            minRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 10
+                        }
+                    }
+                },
+                animation: {
+                    duration: 0
+                }
+            }
+        });
+
+        // --- Velocity Chart ---
+        const velocityCtx = document.getElementById('velocity-chart').getContext('2d');
+        const velocityChart = new Chart(velocityCtx, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''), // Reverted to original 20 points
+                datasets: [{
+                    data: Array(20).fill(0), // Reverted to original 20 points
+                    borderColor: '#30d158', // Original green color
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    backgroundColor: 'rgba(48, 209, 88, 0.1)' // Original fill color
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return `Velocity: ${context.parsed.y.toFixed(2)} m/s`;
+                            }
+                        },
+                        // Fix tooltip text color for dark theme
+                        backgroundColor: 'rgba(30, 30, 30, 0.9)', // Dark background for tooltip
+                        titleColor: 'var(--text-dark)', // White title
+                        bodyColor: 'var(--text-dark)', // White body text
+                        borderColor: 'var(--border-dark)',
+                        borderWidth: 1,
+                        cornerRadius: 4,
+                        displayColors: false
+                    }
+                },
+                scales: { 
+                    y: { 
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Velocity (m/s)',
+                            color: 'var(--gray-text)' // White text for axis title
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: 'var(--text-dark)' // White text for ticks
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time (s)',
+                            color: 'var(--gray-text)' // White text for axis title
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: 'var(--text-dark)', // White text for ticks
+                            maxRotation: 0,
+                            minRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 10
+                        }
+                    }
+                },
+                animation: {
+                    duration: 0
+                }
+            }
+        });
+
+        // ====================================================================
+        // EVENT LISTENERS
+        // ====================================================================
+
+        // Pause/Resume Button
+        document.getElementById('pause-btn').addEventListener('click', function() {
+            isPaused = !isPaused; // Toggle pause state
+            this.textContent = isPaused ? "RESUME" : "PAUSE"; // Update button text
+            this.classList.toggle('red', !isPaused); // Toggle red class based on state
+        });
+
+        // Launch/Reset Button
+        document.getElementById('launch-btn').addEventListener('click', function() {
+            if (isLaunching) {
+                // If already launching, this button acts as a reset
+                resetSimulation();
+            } else {
+                // Otherwise, start the countdown for a new launch
+                startCountdown();
+            }
+        });
+
+        // Connect Button (Placeholder for future functionality)
+        document.getElementById('connect-btn').addEventListener('click', function() {
+            alert('Connecting to telemetry stream... (Feature not implemented in this demo)');
+            // In a real application, this would initiate a WebSocket connection or similar
+        });
+
+        // ====================================================================
+        // MAIN ANIMATION LOOP
+        // ====================================================================
+
+        /**
+         * Main animation loop for rendering 3D scenes.
+         * Uses requestAnimationFrame for smooth, browser-optimized rendering.
+         */
+        function animate() {
+            requestAnimationFrame(animate); // Request next frame
+            
+            // Only render 3D scenes if not paused
+            if (!isPaused) {
+                rocketRenderer.render(rocketScene, rocketCamera);
+                trajectoryRenderer.render(trajectoryScene, trajectoryCamera);
+            }
+        }
+        
+        // Start the main animation loop
+        animate();
+
+        // Initial setup on page load
+        window.onload = () => {
+            // Ensure 3D renderers are sized correctly on initial load
+            const resize3DContainers = () => {
+                if (rocketContainer && trajectoryContainer) {
+                    rocketRenderer.setSize(rocketContainer.clientWidth, rocketContainer.clientHeight);
+                    rocketCamera.aspect = rocketContainer.clientWidth / rocketContainer.clientHeight;
+                    rocketCamera.updateProjectionMatrix();
+
+                    trajectoryRenderer.setSize(trajectoryContainer.clientWidth, trajectoryContainer.clientHeight);
+                    trajectoryCamera.aspect = trajectoryContainer.clientWidth / trajectoryContainer.clientHeight;
+                    trajectoryCamera.updateProjectionMatrix();
+                }
+            };
+            resize3DContainers();
+            window.addEventListener('resize', resize3DContainers); // Add resize listener
+        };
+
+    </script>
+</body>
+</html>
